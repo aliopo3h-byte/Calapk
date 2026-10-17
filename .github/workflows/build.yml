@@ -1,0 +1,36 @@
+name: Build APK
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unpack project
+        run: unzip -q -o CallList-Android.zip -d proj
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Bundle libraries
+        working-directory: proj
+        run: |
+          mkdir -p app/src/main/assets/lib
+          curl -fsSL https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js -o app/src/main/assets/lib/xlsx.full.min.js
+          curl -fsSL https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js -o app/src/main/assets/lib/exceljs.min.js
+          sed -i 's#https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js#lib/xlsx.full.min.js#; s#https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js#lib/exceljs.min.js#' app/src/main/assets/index.html
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Build
+        working-directory: proj
+        run: gradle assembleRelease --no-daemon
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: CallList (latest)
+          files: proj/app/build/outputs/apk/release/*.apk
