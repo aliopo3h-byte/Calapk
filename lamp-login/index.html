@@ -1,0 +1,995 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lamp Login</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: a dark room. Floor lamp anchored bottom-left, login card floats right; pulling the cord lights the room and reveals the card. */
+:root {
+  --night: #0a090d;
+  --night-2: #131118;
+  --cream: #f4e9d8;
+  --muted: rgba(244, 233, 216, .52);
+  --faint: rgba(244, 233, 216, .28);
+  --amber: #f2b266;
+  --amber-2: #df8f43;
+  --brass: #b9925c;
+  --line: rgba(255, 236, 214, .08);
+  --field: rgba(255, 245, 235, .035);
+  --error: #ff9f7f;
+  --ok: #9fd8a8;
+  --display: "Instrument Serif", "Iowan Old Style", Georgia, serif;
+  --ui: "Manrope", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --lx: 25%;
+  --ly: 30%;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--night);
+  color: var(--cream);
+  font: 500 14px/1.5 var(--ui);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+button, input { font: inherit; color: inherit; }
+
+/* ---------- scene ---------- */
+.scene {
+  position: relative;
+  min-height: 100%;
+  overflow: hidden;
+  isolation: isolate;
+  background:
+    radial-gradient(120% 90% at 85% 10%, #110f17 0%, transparent 60%),
+    var(--night);
+}
+.wash, .vignette {
+  position: absolute; inset: 0; pointer-events: none; z-index: 0;
+}
+.wash {
+  opacity: 0;
+  background:
+    radial-gradient(circle at var(--lx) var(--ly), rgba(255, 196, 128, .30) 0, rgba(176, 104, 46, .22) 16%, rgba(90, 48, 22, .20) 34%, rgba(40, 22, 14, .12) 55%, transparent 78%);
+  transition: opacity .5s ease;
+}
+.vignette {
+  z-index: 3;
+  background: radial-gradient(140% 100% at 40% 40%, transparent 55%, rgba(0, 0, 0, .55) 100%);
+}
+.is-lit .wash { opacity: 1; }
+.is-lit.flicker .wash { animation: flick .9s linear both; }
+
+.brand {
+  position: absolute; z-index: 5;
+  top: max(22px, env(safe-area-inset-top, 0px));
+  left: max(24px, env(safe-area-inset-left, 0px));
+  font: 700 10.5px/1 var(--ui);
+  letter-spacing: .32em;
+  text-transform: uppercase;
+  color: var(--faint);
+  transition: color .6s;
+}
+.brand b { font-weight: 700; color: rgba(242, 178, 102, .35); transition: color .6s; }
+.is-lit .brand { color: rgba(244, 233, 216, .7); }
+.is-lit .brand b { color: var(--amber); }
+
+.stage {
+  position: relative; z-index: 2;
+  min-height: 100vh;
+  min-height: 100svh;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  align-items: center;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+
+/* ---------- lamp ---------- */
+.lamp-col {
+  position: relative;
+  align-self: end;
+  height: min(94svh, 940px);
+  min-height: 560px;
+}
+#lamp {
+  position: absolute;
+  bottom: 0;
+  left: 38%;
+  height: 100%;
+  width: auto;
+  aspect-ratio: 400 / 900;
+  transform: translateX(-50%);
+  overflow: visible;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.lit-only { opacity: 0; transition: opacity .45s ease; }
+.dark-only { opacity: 1; transition: opacity .6s ease; }
+.is-lit .lit-only { opacity: 1; }
+.is-lit .dark-only { opacity: 0; }
+.is-lit.flicker .lit-only { animation: flick .9s linear both; }
+@keyframes flick {
+  0% { opacity: 0; } 8% { opacity: .85; } 14% { opacity: .1; } 24% { opacity: .95; }
+  31% { opacity: .35; } 44% { opacity: 1; } 52% { opacity: .78; } 64%, 100% { opacity: 1; }
+}
+.rings ellipse { fill: none; stroke: rgba(190, 190, 230, .028); stroke-width: 26; }
+.rings { animation: breathe 5.5s ease-in-out infinite; transform-origin: 200px 220px; }
+@keyframes breathe { 0%, 100% { opacity: .55; transform: scale(.97); } 50% { opacity: 1; transform: scale(1.03); } }
+
+#cord { fill: none; stroke: url(#cordGrad); stroke-width: 2.1; stroke-linecap: round; }
+#cordHit { fill: transparent; cursor: grab; }
+#cordHit:active, .dragging #cordHit { cursor: grabbing; }
+#cordHandle:focus { outline: none; }
+#cordHandle:focus-visible .focus-ring { opacity: 1; }
+.focus-ring { opacity: 0; fill: none; stroke: var(--amber); stroke-width: 1.5; stroke-dasharray: 3 3; transition: opacity .2s; }
+.bead-armed { opacity: 0; transition: opacity .15s; }
+.armed .bead-armed { opacity: 1; }
+.hint {
+  font: 700 9.5px var(--ui);
+  letter-spacing: .26em;
+  fill: rgba(244, 233, 216, .34);
+  text-transform: uppercase;
+  transition: fill .5s, opacity .3s;
+}
+.is-lit .hint { fill: rgba(242, 178, 102, .55); }
+.hint-line { stroke: rgba(244, 233, 216, .25); stroke-width: 1; }
+.is-lit .hint-line { stroke: rgba(242, 178, 102, .45); }
+.hint-g.swap { opacity: 0; }
+.hint-g { transition: opacity .25s; }
+#dust circle { fill: #ffe2b8; }
+
+/* ---------- card ---------- */
+.card-col {
+  display: flex;
+  justify-content: flex-start;
+  padding-block: 72px;
+}
+.card {
+  position: relative;
+  width: min(420px, 100%);
+  padding: 34px 34px 26px;
+  border-radius: 20px;
+  background:
+    linear-gradient(155deg, rgba(58, 38, 24, .55) 0%, rgba(22, 18, 22, .78) 42%, rgba(12, 11, 15, .9) 100%);
+  border: 1px solid var(--line);
+  box-shadow:
+    0 40px 80px -30px rgba(0, 0, 0, .8),
+    0 0 0 1px rgba(0, 0, 0, .35),
+    inset 0 1px 0 rgba(255, 230, 200, .06);
+  -webkit-backdrop-filter: blur(18px) saturate(120%);
+  backdrop-filter: blur(18px) saturate(120%);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(22px) scale(.985);
+  filter: blur(10px);
+  transition: opacity .7s ease .1s, transform .9s cubic-bezier(.2, .8, .2, 1) .1s, filter .8s ease .1s, visibility 0s linear .9s;
+}
+.card::before {
+  content: "";
+  position: absolute; inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(242, 178, 102, .55), rgba(242, 178, 102, 0) 38%, rgba(255, 255, 255, 0) 70%, rgba(255, 255, 255, .06));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+.is-lit .card {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  filter: none;
+  transition: opacity .8s ease .45s, transform 1s cubic-bezier(.2, .8, .2, 1) .45s, filter .9s ease .45s, visibility 0s;
+}
+.card > * {
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity .5s ease, transform .6s cubic-bezier(.2, .8, .2, 1);
+}
+.is-lit .card > * {
+  opacity: 1;
+  transform: none;
+  transition-delay: calc(.55s + var(--i, 0) * 60ms);
+}
+
+.eyebrow {
+  margin: 0 0 14px;
+  font: 700 10px/1 var(--ui);
+  letter-spacing: .3em;
+  text-transform: uppercase;
+  color: var(--amber);
+  opacity: .9;
+}
+h1 {
+  margin: 0 0 26px;
+  font: 400 clamp(34px, 4vw, 44px)/1.02 var(--display);
+  letter-spacing: -.01em;
+  text-wrap: balance;
+}
+h1 em {
+  display: block;
+  font-style: italic;
+  color: #cdb08a;
+}
+
+form { display: grid; gap: 16px; }
+.field { display: grid; gap: 8px; }
+.label {
+  font: 700 10px/1 var(--ui);
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.input {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 50px;
+  padding: 0 14px;
+  border-radius: 12px;
+  background: var(--field);
+  border: 1px solid rgba(255, 245, 235, .07);
+  transition: border-color .2s, box-shadow .25s, background .25s;
+}
+.input svg { flex: none; width: 16px; height: 16px; color: var(--faint); transition: color .2s; }
+.input input {
+  flex: 1; min-width: 0;
+  height: 100%;
+  border: 0; outline: 0;
+  background: transparent;
+  font-size: 14.5px;
+  letter-spacing: .01em;
+}
+.input input::placeholder { color: rgba(244, 233, 216, .25); }
+.input input:-webkit-autofill {
+  -webkit-text-fill-color: var(--cream);
+  -webkit-box-shadow: 0 0 0 40px #1a1613 inset;
+  caret-color: var(--cream);
+}
+.input:focus-within {
+  border-color: rgba(242, 178, 102, .55);
+  background: rgba(242, 178, 102, .045);
+  box-shadow: 0 0 0 4px rgba(242, 178, 102, .1), 0 8px 24px -12px rgba(242, 178, 102, .35);
+}
+.input:focus-within svg { color: var(--amber); }
+.field.invalid .input { border-color: rgba(255, 159, 127, .55); box-shadow: 0 0 0 4px rgba(255, 159, 127, .08); }
+.err { min-height: 0; font-size: 12px; color: var(--error); }
+.err:empty { display: none; }
+.caps { font-size: 12px; color: var(--amber); }
+.reveal {
+  flex: none;
+  border: 0; background: none; cursor: pointer;
+  padding: 6px 4px;
+  font: 700 10px/1 var(--ui);
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-radius: 6px;
+}
+.reveal:hover { color: var(--cream); }
+
+.row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+.check { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; color: rgba(244, 233, 216, .78); }
+.check input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.box {
+  width: 18px; height: 18px; border-radius: 5px;
+  border: 1px solid rgba(255, 245, 235, .18);
+  background: var(--field);
+  display: grid; place-items: center;
+  transition: background .2s, border-color .2s;
+}
+.box svg { width: 11px; height: 11px; color: #2a1708; opacity: 0; transform: scale(.6); transition: .2s; }
+.check input:checked + .box { background: linear-gradient(135deg, var(--amber), var(--amber-2)); border-color: transparent; }
+.check input:checked + .box svg { opacity: 1; transform: none; }
+.check input:focus-visible + .box { box-shadow: 0 0 0 3px rgba(242, 178, 102, .35); }
+
+.link {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  color: rgba(244, 233, 216, .78);
+  text-decoration: underline;
+  text-decoration-color: rgba(242, 178, 102, .5);
+  text-underline-offset: 3px;
+  font-size: 13px;
+}
+.link:hover { color: var(--amber); }
+
+.primary {
+  position: relative;
+  overflow: hidden;
+  height: 52px;
+  margin-top: 4px;
+  border: 0;
+  border-radius: 13px;
+  cursor: pointer;
+  color: #2a1708;
+  font: 700 15px var(--ui);
+  letter-spacing: .01em;
+  background: linear-gradient(100deg, #f8cf92 0%, var(--amber) 45%, var(--amber-2) 100%);
+  box-shadow: 0 14px 34px -14px rgba(240, 160, 80, .75), inset 0 1px 0 rgba(255, 255, 255, .45);
+  transition: transform .15s, box-shadow .25s, filter .2s;
+}
+.primary::after {
+  content: "";
+  position: absolute; top: 0; bottom: 0; left: -40%;
+  width: 30%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .45), transparent);
+  transform: skewX(-18deg);
+  transition: left .7s ease;
+}
+.primary:hover { box-shadow: 0 18px 40px -14px rgba(240, 160, 80, .9), inset 0 1px 0 rgba(255, 255, 255, .5); filter: brightness(1.04); }
+.primary:hover::after { left: 120%; }
+.primary:active { transform: translateY(1px) scale(.995); }
+.primary:disabled { cursor: progress; }
+.primary .spin {
+  display: none;
+  width: 18px; height: 18px;
+  border: 2px solid rgba(42, 23, 8, .25);
+  border-top-color: #2a1708;
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+  margin: 0 auto;
+}
+.primary.loading .txt { display: none; }
+.primary.loading .spin { display: block; }
+.primary.done { background: linear-gradient(100deg, #cfe9c9, #9fd8a8); }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.or {
+  display: flex; align-items: center; gap: 14px;
+  font: 700 10px/1 var(--ui); letter-spacing: .3em; color: var(--faint);
+}
+.or::before, .or::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, transparent, var(--line), transparent); }
+.social { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.ghost {
+  height: 46px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 245, 235, .08);
+  background: rgba(255, 245, 235, .03);
+  cursor: pointer;
+  font-weight: 600; font-size: 14px;
+  transition: background .2s, border-color .2s, transform .15s;
+}
+.ghost:hover { background: rgba(255, 245, 235, .06); border-color: rgba(255, 245, 235, .14); }
+.ghost:active { transform: translateY(1px); }
+.ghost svg { width: 16px; height: 16px; }
+
+.foot { display: grid; gap: 6px; margin-top: 18px; font-size: 13px; color: var(--muted); }
+.foot small { font-size: 11.5px; color: var(--faint); }
+.status {
+  min-height: 0;
+  font-size: 12.5px;
+  color: var(--amber);
+}
+.status.ok { color: var(--ok); }
+.status:empty { display: none; }
+
+:focus-visible { outline: 2px solid rgba(242, 178, 102, .7); outline-offset: 2px; }
+.input input:focus-visible { outline: none; }
+
+/* ---------- utility bar ---------- */
+.util {
+  position: absolute; z-index: 5;
+  bottom: max(20px, env(safe-area-inset-bottom, 0px));
+  right: max(24px, env(safe-area-inset-right, 0px));
+  display: flex; align-items: center; gap: 14px;
+  font: 600 11px var(--ui); color: var(--faint);
+}
+.util kbd {
+  font: 700 10px var(--ui);
+  padding: 3px 6px;
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 5px;
+  color: var(--muted);
+}
+.sound {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid rgba(255, 255, 255, .1);
+  background: rgba(255, 255, 255, .02);
+  border-radius: 999px;
+  padding: 6px 11px;
+  cursor: pointer;
+  font: 600 11px var(--ui);
+  color: var(--muted);
+}
+.sound svg { width: 13px; height: 13px; }
+.sound[aria-pressed="false"] .wave { display: none; }
+
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---------- responsive ---------- */
+@media (max-width: 860px) {
+  .stage { grid-template-columns: minmax(0, 1fr); align-items: start; }
+  .lamp-col { height: min(70svh, 620px); min-height: 440px; align-self: start; }
+  #lamp { left: 42%; }
+  .card-col { justify-content: center; padding-block: 0 96px; margin-top: -20px; }
+  .card { padding: 28px 22px 22px; }
+  .util .keys { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rings { animation: none; }
+  .is-lit.flicker .lit-only, .is-lit.flicker .wash { animation: none; }
+  .card, .is-lit .card { filter: none; transform: none; }
+  .card > *, .is-lit .card > * { transform: none; transition-duration: .2s; }
+}
+</style>
+</head>
+<body>
+<main class="scene" id="scene">
+  <div class="wash" aria-hidden="true"></div>
+  <div class="brand">Calapk<b>Studio</b></div>
+
+  <div class="stage">
+    <div class="lamp-col">
+      <svg id="lamp" viewBox="0 0 400 900" aria-hidden="false">
+        <defs>
+          <linearGradient id="shadeDark" x1="0" x2="1">
+            <stop offset="0" stop-color="#0e0e13"/>
+            <stop offset=".47" stop-color="#2a2935"/>
+            <stop offset=".53" stop-color="#2f2e3c"/>
+            <stop offset="1" stop-color="#0c0c11"/>
+          </linearGradient>
+          <linearGradient id="shadeLit" x1="0" x2="1">
+            <stop offset="0" stop-color="#a86f37"/>
+            <stop offset=".44" stop-color="#f0c48a"/>
+            <stop offset=".54" stop-color="#f6d3a0"/>
+            <stop offset="1" stop-color="#a26935"/>
+          </linearGradient>
+          <linearGradient id="shadeShade" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#3a1c06" stop-opacity=".35"/>
+            <stop offset=".6" stop-color="#3a1c06" stop-opacity="0"/>
+          </linearGradient>
+          <radialGradient id="rimLit" cx=".5" cy=".5" r=".5">
+            <stop offset="0" stop-color="#fff6e2"/>
+            <stop offset=".7" stop-color="#ffd9a3"/>
+            <stop offset="1" stop-color="#e2a35c"/>
+          </radialGradient>
+          <linearGradient id="cone" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#ffcf92" stop-opacity=".34"/>
+            <stop offset=".35" stop-color="#e9a25a" stop-opacity=".16"/>
+            <stop offset="1" stop-color="#b8692c" stop-opacity="0"/>
+          </linearGradient>
+          <radialGradient id="halo" cx=".5" cy=".5" r=".5">
+            <stop offset="0" stop-color="#fff1d6" stop-opacity=".95"/>
+            <stop offset=".25" stop-color="#ffcf8f" stop-opacity=".45"/>
+            <stop offset="1" stop-color="#ffb060" stop-opacity="0"/>
+          </radialGradient>
+          <radialGradient id="pool" cx=".5" cy=".5" r=".5">
+            <stop offset="0" stop-color="#e6a160" stop-opacity=".35"/>
+            <stop offset="1" stop-color="#e6a160" stop-opacity="0"/>
+          </radialGradient>
+          <radialGradient id="bulbLit" cx=".45" cy=".4" r=".6">
+            <stop offset="0" stop-color="#fffaf0"/>
+            <stop offset=".6" stop-color="#ffe2b4"/>
+            <stop offset="1" stop-color="#f0b26a"/>
+          </radialGradient>
+          <linearGradient id="pole" x1="0" x2="1">
+            <stop offset="0" stop-color="#0d0d11"/>
+            <stop offset=".45" stop-color="#3b3a44"/>
+            <stop offset="1" stop-color="#0b0b0e"/>
+          </linearGradient>
+          <linearGradient id="brass" x1="0" x2="1">
+            <stop offset="0" stop-color="#5b4325"/>
+            <stop offset=".45" stop-color="#d7b27a"/>
+            <stop offset="1" stop-color="#4f3a20"/>
+          </linearGradient>
+          <linearGradient id="baseG" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#2c2b33"/>
+            <stop offset="1" stop-color="#08080a"/>
+          </linearGradient>
+          <linearGradient id="cordGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#c9a877"/>
+            <stop offset="1" stop-color="#8d6c43"/>
+          </linearGradient>
+          <radialGradient id="beadG" cx=".35" cy=".3" r=".75">
+            <stop offset="0" stop-color="#f4dcb2"/>
+            <stop offset=".5" stop-color="#b98f55"/>
+            <stop offset="1" stop-color="#5a4123"/>
+          </radialGradient>
+        </defs>
+
+        <!-- dark-room rings that invite a pull -->
+        <g class="dark-only">
+          <g class="rings">
+            <ellipse cx="200" cy="220" rx="150" ry="104"/>
+            <ellipse cx="200" cy="220" rx="230" ry="160"/>
+            <ellipse cx="200" cy="220" rx="320" ry="222"/>
+          </g>
+        </g>
+
+        <!-- light -->
+        <g class="lit-only">
+          <polygon points="98,292 302,292 760,900 -360,900" fill="url(#cone)"/>
+          <ellipse cx="200" cy="872" rx="380" ry="44" fill="url(#pool)"/>
+          <circle cx="200" cy="318" r="120" fill="url(#halo)"/>
+        </g>
+        <g id="dust" class="lit-only"></g>
+
+        <!-- base -->
+        <ellipse cx="200" cy="868" rx="96" ry="10" fill="#000" opacity=".55"/>
+        <path d="M122 858 Q122 846 200 844 Q278 846 278 858 Q278 872 200 873 Q122 872 122 858Z" fill="url(#baseG)"/>
+        <ellipse cx="200" cy="850" rx="76" ry="7" fill="none" stroke="#c9a877" stroke-opacity=".22"/>
+        <rect x="186" y="828" width="28" height="20" rx="3" fill="url(#pole)"/>
+
+        <!-- pole -->
+        <rect x="194" y="336" width="12" height="496" fill="url(#pole)"/>
+        <rect x="190" y="598" width="20" height="14" rx="2" fill="url(#brass)"/>
+        <rect x="191" y="824" width="18" height="6" rx="1.5" fill="url(#brass)"/>
+        <rect x="188" y="330" width="24" height="10" rx="2" fill="url(#brass)"/>
+
+        <!-- bulb + socket -->
+        <rect x="191" y="284" width="18" height="18" rx="2" fill="url(#brass)"/>
+        <ellipse cx="200" cy="316" rx="19" ry="20" fill="#2a2620"/>
+        <ellipse class="lit-only" cx="200" cy="316" rx="19" ry="20" fill="url(#bulbLit)"/>
+
+        <!-- shade -->
+        <path d="M142 150 Q200 143 258 150 L309 287 Q200 300 91 287 Z" fill="url(#shadeDark)"/>
+        <g class="lit-only">
+          <path d="M142 150 Q200 143 258 150 L309 287 Q200 300 91 287 Z" fill="url(#shadeLit)"/>
+          <path d="M142 150 Q200 143 258 150 L309 287 Q200 300 91 287 Z" fill="url(#shadeShade)"/>
+          <line x1="200" y1="147" x2="200" y2="293" stroke="#8a5a2a" stroke-opacity=".25"/>
+        </g>
+        <ellipse cx="200" cy="150" rx="58" ry="5" fill="#07070a" opacity=".7"/>
+        <ellipse cx="200" cy="288" rx="109" ry="12" fill="#121118" stroke="#3a3946" stroke-opacity=".6"/>
+        <ellipse class="lit-only" cx="200" cy="288" rx="109" ry="12" fill="url(#rimLit)"/>
+
+        <!-- pull cord -->
+        <path id="cord" d=""/>
+        <g id="cordHandle" tabindex="0" role="switch" aria-checked="false" aria-label="Lamp pull cord. Press Enter to switch the light on.">
+          <g id="bead">
+            <circle class="focus-ring" r="15"/>
+            <circle class="bead-armed" r="11" fill="#f2b266" opacity=".25"/>
+            <path d="M-1.4 -2 L1.4 -2 L2.6 12 L-2.6 12Z" fill="#8d6c43"/>
+            <circle cy="-1" r="5.2" fill="url(#beadG)"/>
+            <path d="M-3 12 L3 12 L4.5 19 L-4.5 19Z" fill="url(#beadG)"/>
+          </g>
+          <circle id="cordHit" r="30"/>
+        </g>
+        <g id="hintG" class="hint-g" aria-hidden="true">
+          <line class="hint-line" x1="0" y1="0" x2="16" y2="0"/>
+          <text id="hint" class="hint" x="24" y="3.5">Pull the cord</text>
+        </g>
+      </svg>
+    </div>
+
+    <div class="card-col">
+      <section class="card" id="card" aria-labelledby="title" inert>
+        <p class="eyebrow" style="--i:0">Studio access</p>
+        <h1 id="title" style="--i:1">Welcome back.<em>Pull up a chair.</em></h1>
+
+        <form id="form" novalidate style="--i:2">
+          <div class="field" id="f-email">
+            <label class="label" for="email">Email</label>
+            <div class="input">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m4 7 8 6 8-6"/></svg>
+              <input id="email" name="email" type="email" inputmode="email" autocomplete="username" placeholder="you@studio.com" aria-describedby="email-err" required>
+            </div>
+            <div class="err" id="email-err" aria-live="polite"></div>
+          </div>
+
+          <div class="field" id="f-pass">
+            <label class="label" for="password">Password</label>
+            <div class="input">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg>
+              <input id="password" name="password" type="password" autocomplete="current-password" placeholder="••••••••" aria-describedby="pass-err caps" required minlength="6">
+              <button class="reveal" type="button" id="reveal" aria-controls="password" aria-pressed="false">Show</button>
+            </div>
+            <div class="caps" id="caps" hidden>Caps Lock is on.</div>
+            <div class="err" id="pass-err" aria-live="polite"></div>
+          </div>
+
+          <div class="row">
+            <label class="check" for="remember">
+              <input type="checkbox" id="remember" checked>
+              <span class="box"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m2.5 6.2 2.3 2.3 4.7-5"/></svg></span>
+              Keep me signed in
+            </label>
+            <button type="button" class="link" id="forgot">Forgot password</button>
+          </div>
+
+          <button class="primary" type="submit" id="submit"><span class="txt">Sign in</span><span class="spin" aria-hidden="true"></span></button>
+          <div class="status" id="status" role="status" aria-live="polite"></div>
+
+          <div class="or">OR</div>
+          <div class="social">
+            <button type="button" class="ghost" data-provider="Apple">
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.37 12.6c-.02-2.2 1.8-3.26 1.88-3.31-1.03-1.5-2.62-1.7-3.18-1.73-1.35-.14-2.64.8-3.33.8-.69 0-1.74-.78-2.87-.76-1.47.02-2.83.86-3.59 2.18-1.53 2.66-.39 6.6 1.1 8.76.73 1.06 1.6 2.24 2.73 2.2 1.1-.04 1.51-.71 2.84-.71 1.32 0 1.7.71 2.86.69 1.18-.02 1.93-1.08 2.65-2.14.84-1.22 1.18-2.41 1.2-2.47-.03-.01-2.3-.88-2.32-3.5ZM14.2 6.13c.6-.74 1.01-1.75.9-2.77-.87.04-1.93.58-2.55 1.31-.56.65-1.05 1.69-.92 2.69.97.07 1.96-.49 2.57-1.23Z"/></svg>
+              Apple
+            </button>
+            <button type="button" class="ghost" data-provider="Google">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M21.6 12.23c0-.68-.06-1.36-.18-2.02H12v3.83h5.4a4.62 4.62 0 0 1-2 3.03v2.5h3.24c1.9-1.75 2.96-4.33 2.96-7.34Z"/><path fill="#34A853" d="M12 22c2.7 0 4.97-.9 6.63-2.43l-3.24-2.5c-.9.6-2.05.96-3.39.96-2.6 0-4.81-1.76-5.6-4.12H3.06v2.58A10 10 0 0 0 12 22Z"/><path fill="#FBBC05" d="M6.4 13.91a6 6 0 0 1 0-3.82V7.51H3.06a10 10 0 0 0 0 8.98l3.34-2.58Z"/><path fill="#EA4335" d="M12 5.97c1.47 0 2.79.5 3.83 1.5l2.87-2.87A9.6 9.6 0 0 0 12 2a10 10 0 0 0-8.94 5.51L6.4 10.1C7.19 7.73 9.4 5.97 12 5.97Z"/></svg>
+              Google
+            </button>
+          </div>
+        </form>
+
+        <div class="foot" style="--i:3">
+          <span>No account? <button type="button" class="link" id="request">Request one</button></span>
+          <small>Demo build. Nothing is sent anywhere.</small>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div class="util">
+    <span class="keys">Press <kbd>L</kbd> for the light</span>
+    <button class="sound" id="sound" type="button" aria-pressed="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4V5Z" fill="currentColor" stroke="none"/><path class="wave" d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+      <span id="soundTxt">Sound on</span>
+    </button>
+  </div>
+  <div class="vignette" aria-hidden="true"></div>
+  <p class="sr" id="announce" aria-live="polite"></p>
+</main>
+
+<script>
+(() => {
+  const scene = document.getElementById('scene');
+  const svg = document.getElementById('lamp');
+  const cordPath = document.getElementById('cord');
+  const bead = document.getElementById('bead');
+  const handle = document.getElementById('cordHandle');
+  const hit = document.getElementById('cordHit');
+  const hintG = document.getElementById('hintG');
+  const hint = document.getElementById('hint');
+  const card = document.getElementById('card');
+  const announce = document.getElementById('announce');
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  let lit = false;
+
+  /* ---------- sound ---------- */
+  let audio = null;
+  let soundOn = true;
+  try { soundOn = localStorage.getItem('lamp-sound') !== 'off'; } catch (e) {}
+  const soundBtn = document.getElementById('sound');
+  const soundTxt = document.getElementById('soundTxt');
+  const paintSound = () => {
+    soundBtn.setAttribute('aria-pressed', String(soundOn));
+    soundTxt.textContent = soundOn ? 'Sound on' : 'Sound off';
+  };
+  paintSound();
+  soundBtn.addEventListener('click', () => {
+    soundOn = !soundOn;
+    paintSound();
+    try { localStorage.setItem('lamp-sound', soundOn ? 'on' : 'off'); } catch (e) {}
+  });
+  function click(on) {
+    if (!soundOn) return;
+    try {
+      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+      const t = audio.currentTime;
+      const len = Math.floor(audio.sampleRate * 0.06);
+      const buf = audio.createBuffer(1, len, audio.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (len * 0.12));
+      const src = audio.createBufferSource();
+      src.buffer = buf;
+      const bp = audio.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = on ? 2600 : 1900;
+      bp.Q.value = 2.5;
+      const g = audio.createGain();
+      g.gain.value = 0.55;
+      src.connect(bp).connect(g).connect(audio.destination);
+      src.start(t);
+      const o = audio.createOscillator();
+      const og = audio.createGain();
+      o.frequency.setValueAtTime(on ? 170 : 130, t);
+      o.frequency.exponentialRampToValueAtTime(60, t + 0.06);
+      og.gain.setValueAtTime(0.18, t);
+      og.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+      o.connect(og).connect(audio.destination);
+      o.start(t);
+      o.stop(t + 0.1);
+    } catch (e) {}
+  }
+
+  /* ---------- light state ---------- */
+  function setHint(text) {
+    hintG.classList.add('swap');
+    setTimeout(() => { hint.textContent = text; hintG.classList.remove('swap'); }, 220);
+  }
+  function toggle() {
+    lit = !lit;
+    click(lit);
+    try { navigator.vibrate && navigator.vibrate(12); } catch (e) {}
+    scene.classList.toggle('is-lit', lit);
+    if (lit && !reduce) {
+      scene.classList.remove('flicker');
+      void scene.offsetWidth;
+      scene.classList.add('flicker');
+    }
+    card.inert = !lit;
+    handle.setAttribute('aria-checked', String(lit));
+    handle.setAttribute('aria-label', lit ? 'Lamp pull cord. Press Enter to switch the light off.' : 'Lamp pull cord. Press Enter to switch the light on.');
+    setHint(lit ? 'Pull again for dark' : 'Pull the cord');
+    announce.textContent = lit ? 'Light on. Sign-in form is ready.' : 'Light off.';
+    if (lit && matchMedia('(max-width: 860px)').matches) {
+      setTimeout(() => card.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' }), 900);
+    }
+    if (lit) setTimeout(() => { if (lit && document.activeElement === handle && !matchMedia('(pointer: coarse)').matches) document.getElementById('email').focus({ preventScroll: true }); }, 1100);
+  }
+
+  /* ---------- light position for the room wash ---------- */
+  function placeWash() {
+    const r = svg.getBoundingClientRect();
+    const s = scene.getBoundingClientRect();
+    const x = r.left + r.width * 0.5 - s.left;
+    const y = r.top + r.height * (290 / 900) - s.top;
+    scene.style.setProperty('--lx', x + 'px');
+    scene.style.setProperty('--ly', y + 'px');
+  }
+  addEventListener('resize', placeWash);
+  placeWash();
+
+  /* ---------- rope physics (verlet) ---------- */
+  const A = { x: 252, y: 291 };
+  const N = 14, SEG = 12, REST = N * SEG, MAX_STRETCH = 70, ARM_AT = 36;
+  const pts = [];
+  for (let i = 0; i <= N; i++) pts.push({ x: A.x + i * 0.4, y: A.y + i * SEG, px: A.x, py: A.y + i * SEG });
+  let drag = null, armed = false, moved = 0, downAt = null;
+  let auto = null; // scripted pull for click / keyboard
+
+  function toSvg(e) {
+    const p = svg.createSVGPoint();
+    p.x = e.clientX; p.y = e.clientY;
+    return p.matrixTransform(svg.getScreenCTM().inverse());
+  }
+
+  hit.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    hit.setPointerCapture(e.pointerId);
+    const p = toSvg(e);
+    downAt = { x: p.x, y: p.y };
+    const end = pts[N];
+    drag = { x: p.x, y: p.y, ox: end.x - p.x, oy: end.y - p.y };
+    moved = 0; armed = false;
+    scene.classList.add('dragging');
+    if (audio && audio.state === 'suspended') audio.resume();
+  });
+  hit.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const p = toSvg(e);
+    drag.x = p.x; drag.y = p.y;
+    moved = Math.max(moved, Math.hypot(p.x - downAt.x, p.y - downAt.y));
+  });
+  const release = () => {
+    if (!drag) return;
+    const wasArmed = armed;
+    drag = null; armed = false;
+    scene.classList.remove('dragging', 'armed');
+    if (wasArmed) toggle();
+    else if (moved < 5) pull();
+    if (wasArmed) setHint(lit ? 'Pull again for dark' : 'Pull the cord');
+  };
+  hit.addEventListener('pointerup', release);
+  hit.addEventListener('pointercancel', () => { drag = null; armed = false; scene.classList.remove('dragging', 'armed'); });
+
+  function pull() {
+    if (auto) return;
+    auto = { t: 0, fired: false };
+  }
+  handle.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pull(); }
+  });
+  addEventListener('keydown', (e) => {
+    if ((e.key === 'l' || e.key === 'L') && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      const t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      pull();
+    }
+  });
+
+  function step(dt) {
+    const g = 1500;
+    for (let i = 1; i <= N; i++) {
+      const p = pts[i];
+      const vx = (p.x - p.px) * 0.985, vy = (p.y - p.py) * 0.985;
+      p.px = p.x; p.py = p.y;
+      p.x += vx; p.y += vy + g * dt * dt;
+    }
+    let target = null;
+    if (drag) target = { x: drag.x + drag.ox, y: drag.y + drag.oy };
+    if (auto) {
+      auto.t += dt;
+      const k = auto.t < 0.16 ? auto.t / 0.16 : Math.max(0, 1 - (auto.t - 0.16) / 0.06);
+      if (auto.t < 0.22) target = { x: A.x + 4, y: A.y + REST + 58 * Math.sin(k * Math.PI / 2) };
+      if (!auto.fired && auto.t >= 0.16) { auto.fired = true; toggle(); }
+      if (auto.t >= 0.22) auto = null;
+    }
+    let seg = SEG;
+    if (target) {
+      const dx = target.x - A.x, dy = target.y - A.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const max = REST + MAX_STRETCH;
+      if (d > max) { target.x = A.x + dx / d * max; target.y = A.y + dy / d * max; }
+      const dist = Math.min(d, max);
+      seg = Math.max(SEG, dist / N);
+      const end = pts[N];
+      end.x = target.x; end.y = target.y;
+      if (drag) {
+        const isArmed = dist - REST > ARM_AT;
+        if (isArmed !== armed) {
+          armed = isArmed;
+          scene.classList.toggle('armed', armed);
+          hint.textContent = armed ? 'Let go' : (lit ? 'Pull again for dark' : 'Pull the cord');
+        }
+      }
+    }
+    for (let k = 0; k < 24; k++) {
+      pts[0].x = A.x; pts[0].y = A.y;
+      for (let i = 0; i < N; i++) {
+        const a = pts[i], b = pts[i + 1];
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const d = Math.hypot(dx, dy) || 0.0001;
+        const diff = (d - seg) / d;
+        const aFixed = i === 0, bFixed = target && i + 1 === N;
+        if (aFixed && bFixed) continue;
+        if (aFixed) { b.x -= dx * diff; b.y -= dy * diff; }
+        else if (bFixed) { a.x += dx * diff; a.y += dy * diff; }
+        else { a.x += dx * diff * 0.5; a.y += dy * diff * 0.5; b.x -= dx * diff * 0.5; b.y -= dy * diff * 0.5; }
+      }
+    }
+    // keep the cord in front of the pole
+    for (let i = 1; i <= N; i++) if (pts[i].x < 214 && pts[i].y > 330) pts[i].x = 214;
+  }
+
+  function render() {
+    let d = `M${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
+    for (let i = 1; i < N; i++) {
+      const mx = (pts[i].x + pts[i + 1].x) / 2, my = (pts[i].y + pts[i + 1].y) / 2;
+      d += ` Q${pts[i].x.toFixed(1)} ${pts[i].y.toFixed(1)} ${mx.toFixed(1)} ${my.toFixed(1)}`;
+    }
+    d += ` L${pts[N].x.toFixed(1)} ${pts[N].y.toFixed(1)}`;
+    cordPath.setAttribute('d', d);
+    const e = pts[N], p = pts[N - 1];
+    const ang = Math.atan2(e.y - p.y, e.x - p.x) * 180 / Math.PI - 90;
+    bead.setAttribute('transform', `translate(${e.x.toFixed(1)} ${e.y.toFixed(1)}) rotate(${ang.toFixed(1)})`);
+    hit.setAttribute('cx', e.x.toFixed(1));
+    hit.setAttribute('cy', (e.y + 8).toFixed(1));
+    hintG.setAttribute('transform', `translate(${(e.x + 18).toFixed(1)} ${(e.y + 10).toFixed(1)})`);
+  }
+
+  /* ---------- dust in the light cone ---------- */
+  const dustG = document.getElementById('dust');
+  const motes = [];
+  const NS = 'http://www.w3.org/2000/svg';
+  function inCone(x, y) {
+    if (y < 300 || y > 880) return false;
+    const t = (y - 292) / 608;
+    const l = 98 + (-360 - 98) * t, r = 302 + (760 - 302) * t;
+    return x > l + 20 && x < r - 20;
+  }
+  function spawn(m) {
+    do { m.x = -200 + Math.random() * 800; m.y = 310 + Math.random() * 560; } while (!inCone(m.x, m.y));
+    m.vx = (Math.random() - 0.5) * 6;
+    m.vy = (Math.random() - 0.6) * 5;
+    m.ph = Math.random() * Math.PI * 2;
+  }
+  if (!reduce) {
+    for (let i = 0; i < 46; i++) {
+      const c = document.createElementNS(NS, 'circle');
+      c.setAttribute('r', (0.6 + Math.random() * 1.4).toFixed(2));
+      dustG.appendChild(c);
+      const m = { el: c };
+      spawn(m);
+      motes.push(m);
+    }
+  }
+  function drift(dt, t) {
+    if (!lit) return;
+    for (const m of motes) {
+      m.x += (m.vx + Math.sin(t * 0.4 + m.ph) * 3) * dt;
+      m.y += m.vy * dt;
+      if (!inCone(m.x, m.y)) spawn(m);
+      const tw = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t * 1.3 + m.ph));
+      const fall = 1 - (m.y - 300) / 620;
+      m.el.setAttribute('cx', m.x.toFixed(1));
+      m.el.setAttribute('cy', m.y.toFixed(1));
+      m.el.setAttribute('opacity', (tw * fall * 0.8).toFixed(2));
+    }
+  }
+
+  /* ---------- loop ---------- */
+  let last = performance.now(), acc = 0;
+  const H = 1 / 120;
+  for (let i = 0; i < 120; i++) step(H);
+  function frame(now) {
+    acc += Math.min(0.05, (now - last) / 1000);
+    last = now;
+    while (acc >= H) { step(H); acc -= H; }
+    render();
+    drift(1 / 60, now / 1000);
+    requestAnimationFrame(frame);
+  }
+  render();
+  requestAnimationFrame(frame);
+
+  /* ---------- form ---------- */
+  const form = document.getElementById('form');
+  const email = document.getElementById('email');
+  const pass = document.getElementById('password');
+  const status = document.getElementById('status');
+  const submit = document.getElementById('submit');
+  const reveal = document.getElementById('reveal');
+  const caps = document.getElementById('caps');
+
+  const say = (msg, ok) => { status.textContent = msg; status.classList.toggle('ok', !!ok); };
+  const setErr = (field, el, msg) => {
+    document.getElementById(field).classList.toggle('invalid', !!msg);
+    document.getElementById(el).textContent = msg || '';
+  };
+  const emailOk = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v);
+
+  reveal.addEventListener('click', () => {
+    const show = pass.type === 'password';
+    pass.type = show ? 'text' : 'password';
+    reveal.textContent = show ? 'Hide' : 'Show';
+    reveal.setAttribute('aria-pressed', String(show));
+    pass.focus();
+  });
+  const capsCheck = (e) => { if (e.getModifierState) caps.hidden = !e.getModifierState('CapsLock'); };
+  pass.addEventListener('keydown', capsCheck);
+  pass.addEventListener('keyup', capsCheck);
+  pass.addEventListener('blur', () => { caps.hidden = true; });
+
+  email.addEventListener('input', () => { if (emailOk(email.value.trim())) setErr('f-email', 'email-err'); });
+  pass.addEventListener('input', () => { if (pass.value.length >= 6) setErr('f-pass', 'pass-err'); });
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    say('');
+    const v = email.value.trim();
+    let bad = null;
+    if (!v) { setErr('f-email', 'email-err', 'Enter your email address.'); bad = bad || email; }
+    else if (!emailOk(v)) { setErr('f-email', 'email-err', 'That email looks incomplete. Check the part after @.'); bad = bad || email; }
+    else setErr('f-email', 'email-err');
+    if (!pass.value) { setErr('f-pass', 'pass-err', 'Enter your password.'); bad = bad || pass; }
+    else if (pass.value.length < 6) { setErr('f-pass', 'pass-err', 'Passwords are at least 6 characters.'); bad = bad || pass; }
+    else setErr('f-pass', 'pass-err');
+    if (bad) { bad.focus(); return; }
+
+    submit.disabled = true;
+    submit.classList.add('loading');
+    setTimeout(() => {
+      submit.classList.remove('loading');
+      submit.classList.add('done');
+      submit.querySelector('.txt').textContent = 'Signed in';
+      say(`Signed in as ${v}. This demo stops here.`, true);
+      setTimeout(() => {
+        submit.disabled = false;
+        submit.classList.remove('done');
+        submit.querySelector('.txt').textContent = 'Sign in';
+      }, 2600);
+    }, 1300);
+  });
+
+  document.getElementById('forgot').addEventListener('click', () => {
+    const v = email.value.trim();
+    say(emailOk(v) ? `A reset link would go to ${v}. This demo doesn't send email.` : 'Enter your email above first, then choose Forgot password.');
+    if (!emailOk(v)) email.focus();
+  });
+  document.getElementById('request').addEventListener('click', () => say('Access requests open soon. This demo has no sign-up yet.'));
+  document.querySelectorAll('[data-provider]').forEach((b) =>
+    b.addEventListener('click', () => say(`${b.dataset.provider} sign-in isn't connected in this demo.`))
+  );
+})();
+</script>
+</body>
+</html>
