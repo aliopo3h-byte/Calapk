@@ -1,0 +1,811 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Roast / Ritual</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Roast / Ritual — specialty coffee roasted in small batches. Wake the beans, let it bloom, sip the unexpected.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antic+Didone&family=Bodoni+Moda:opsz,wght@6..96,400;6..96,500&family=Instrument+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one sticky "stage" per brewing step; copy on the left, the drawn object in the middle, scroll drives the brew. */
+:root{
+  --cream:#f3eadc;
+  --cream-2:#ece0cd;
+  --paper:#fbf6ee;
+  --ink:#1b1410;
+  --ink-soft:#5b4c41;
+  --roast:#3a2116;
+  --espresso:#22130c;
+  --caramel:#c8894f;
+  --clay:#b5603b;
+  --line:rgba(27,20,16,.14);
+  --f-display:"Bodoni Moda","Antic Didone","Didot","Times New Roman",serif;
+  --f-body:"Instrument Sans","Helvetica Neue",Arial,sans-serif;
+  --gutter-l:max(16px, env(safe-area-inset-left, 0px));
+  --gutter-r:max(16px, env(safe-area-inset-right, 0px));
+  --pad-x:clamp(16px, 5vw, 72px);
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:auto}
+body{margin:0;background:var(--cream);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:60;background:var(--cream)}
+img,svg,canvas{max-width:100%;display:block}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--clay);outline-offset:3px;border-radius:4px}
+
+/* grain */
+.grain{position:fixed;inset:0;pointer-events:none;z-index:70;opacity:.07;mix-blend-mode:multiply;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>")}
+
+/* ---------- loader ---------- */
+.loader{position:fixed;inset:0;z-index:100;background:var(--espresso);color:var(--cream);display:grid;place-items:center;transition:clip-path 1.1s cubic-bezier(.77,0,.18,1)}
+.loader.done{clip-path:inset(0 0 100% 0)}
+.loader__inner{display:grid;gap:18px;justify-items:center}
+.loader__brand{font-family:var(--f-display);font-size:clamp(28px,4vw,44px);letter-spacing:.04em}
+.loader__bar{width:180px;height:1px;background:rgba(243,234,220,.2);overflow:hidden}
+.loader__bar i{display:block;height:100%;width:0;background:var(--caramel);transition:width .25s}
+.loader__count{font-size:11px;letter-spacing:.3em;opacity:.6;font-variant-numeric:tabular-nums}
+
+/* ---------- header ---------- */
+.hdr{position:fixed;top:env(safe-area-inset-top,0px);left:0;right:0;z-index:50;padding-block:20px;padding-left:max(var(--pad-x),var(--gutter-l));padding-right:max(var(--pad-x),var(--gutter-r));display:flex;align-items:center;gap:24px;transition:background .4s,padding .4s,backdrop-filter .4s}
+.hdr.scrolled{background:rgba(243,234,220,.78);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);padding-block:12px;border-bottom:1px solid var(--line)}
+.brand{font-family:var(--f-display);font-size:19px;letter-spacing:.06em;white-space:nowrap}
+.brand span{opacity:.45;margin-inline:.25em}
+.nav{display:flex;gap:clamp(14px,2.2vw,34px);margin-left:auto;font-size:12.5px;letter-spacing:.02em}
+.nav a{position:relative;padding-block:4px;color:var(--ink-soft);transition:color .3s}
+.nav a::after{content:"";position:absolute;left:0;right:0;bottom:-2px;height:1px;background:var(--ink);transform:scaleX(0);transform-origin:right;transition:transform .45s cubic-bezier(.65,0,.35,1)}
+.nav a:hover,.nav a.active{color:var(--ink)}
+.nav a:hover::after,.nav a.active::after{transform:scaleX(1);transform-origin:left}
+.btn{display:inline-flex;align-items:center;gap:10px;border-radius:999px;padding:11px 20px;font-size:12px;font-weight:600;letter-spacing:.04em;border:1px solid var(--ink);transition:background .35s,color .35s,transform .35s}
+.btn--dark{background:var(--ink);color:var(--cream)}
+.btn--dark:hover{background:var(--roast)}
+.btn--ghost{background:transparent;color:var(--ink)}
+.btn--ghost:hover{background:var(--ink);color:var(--cream)}
+.btn .arr{display:inline-block;transition:transform .35s}
+.btn:hover .arr{transform:translateX(4px)}
+.menu-toggle{display:none;margin-left:auto;width:42px;height:42px;border-radius:50%;border:1px solid var(--line);background:transparent}
+
+/* side progress + floating button */
+.rail{position:fixed;right:max(22px,calc(env(safe-area-inset-right,0px) + 14px));top:50%;transform:translateY(-50%);z-index:40;display:grid;gap:12px}
+.rail button{width:7px;height:7px;border-radius:50%;border:0;padding:0;background:var(--ink);opacity:.2;transition:opacity .3s,transform .3s}
+.rail button.on{opacity:1;transform:scale(1.4)}
+.fab{position:fixed;right:max(22px,calc(env(safe-area-inset-right,0px) + 14px));bottom:max(22px,calc(env(safe-area-inset-bottom,0px) + 14px));z-index:45;width:48px;height:48px;border-radius:50%;background:var(--ink);color:var(--cream);border:0;display:grid;place-items:center;box-shadow:0 10px 30px rgba(34,19,12,.3);transition:transform .3s}
+.fab:hover{transform:scale(1.08) rotate(90deg)}
+.side-arrow{position:absolute;left:max(18px,var(--gutter-l));top:50%;font-size:22px;color:var(--ink-soft);background:none;border:0;opacity:.7}
+
+/* ---------- scenes ---------- */
+.scene{position:relative;height:260vh}
+.scene--short{height:200vh}
+.stage{position:sticky;top:0;height:100vh;height:100svh;overflow:hidden;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr) minmax(0,.6fr);align-items:center;padding-left:max(var(--pad-x),var(--gutter-l));padding-right:max(var(--pad-x),var(--gutter-r));padding-block:90px 40px}
+.copy{position:relative;z-index:5;max-width:420px;min-width:0}
+.eyebrow{font-size:11px;font-weight:600;letter-spacing:.24em;text-transform:uppercase;color:var(--ink-soft);display:flex;gap:12px;align-items:center}
+.eyebrow::before{content:"";width:28px;height:1px;background:currentColor;opacity:.6}
+.step-no{font-family:var(--f-display);font-size:clamp(28px,3vw,40px);line-height:1;margin-bottom:6px;display:block}
+.display{font-family:var(--f-display);font-weight:400;text-transform:uppercase;line-height:.88;letter-spacing:-.01em;font-size:clamp(54px,8.6vw,138px);margin:18px 0 22px;text-wrap:balance}
+.display--md{font-size:clamp(44px,5.2vw,88px)}
+.display .ln{display:block;clip-path:inset(-.1em -100vw -.08em -2px);padding-bottom:.04em;white-space:nowrap}
+.display .ln > span{display:inline-block;will-change:transform}
+.lede{color:var(--ink-soft);max-width:36ch;margin:0 0 26px;font-size:14.5px}
+.visual{position:relative;height:100%;min-width:0;display:grid;place-items:center}
+.visual svg{width:min(100%,640px);height:auto;max-height:86vh;overflow:visible}
+.aside{align-self:end;justify-self:end;text-align:right;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-soft);display:grid;gap:6px;padding-bottom:30px;min-width:0}
+.aside b{font-family:var(--f-display);font-weight:400;font-size:clamp(28px,3vw,44px);letter-spacing:0;color:var(--ink);text-transform:none}
+
+.hero-dots{position:absolute;left:50%;bottom:26px;transform:translateX(-50%);display:flex;gap:8px}
+.hero-dots i{width:6px;height:6px;border-radius:50%;background:var(--ink);opacity:.2}
+.hero-dots i:first-child{opacity:1}
+.scroll-hint{position:absolute;left:max(var(--pad-x),var(--gutter-l));bottom:28px;font-size:10.5px;letter-spacing:.3em;text-transform:uppercase;color:var(--ink-soft);display:flex;align-items:center;gap:12px}
+.scroll-hint i{width:1px;height:38px;background:var(--line);position:relative;overflow:hidden}
+.scroll-hint i::after{content:"";position:absolute;left:0;top:-40%;width:1px;height:40%;background:var(--ink);animation:drip 2s infinite cubic-bezier(.6,0,.3,1)}
+@keyframes drip{to{top:110%}}
+
+#wake .visual svg{overflow:hidden}
+#grounds{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:3}
+
+/* scene backgrounds */
+.scene--bloom .stage{background:linear-gradient(180deg,var(--cream) 0%,var(--paper) 100%)}
+.ghost-word{position:absolute;font-family:var(--f-display);text-transform:uppercase;font-size:clamp(120px,22vw,360px);line-height:.8;color:transparent;-webkit-text-stroke:1px rgba(27,20,16,.07);white-space:nowrap;pointer-events:none;z-index:0;left:50%;top:50%;transform:translate(-50%,-50%)}
+
+/* caramel swirl band */
+.swirl{position:absolute;left:0;right:0;bottom:0;height:42%;z-index:0;overflow:hidden}
+.swirl::before{content:"";position:absolute;inset:-20%;
+  background:
+    radial-gradient(60% 80% at 20% 60%,#e7c193 0%,transparent 60%),
+    radial-gradient(50% 70% at 70% 40%,#a8693a 0%,transparent 65%),
+    radial-gradient(40% 60% at 90% 80%,#f2dcbc 0%,transparent 60%),
+    linear-gradient(120deg,#c98d55,#8a4f27 40%,#e3b88a 70%,#b8763f);
+  filter:url(#swirlFx);animation:swirlMove 22s linear infinite alternate}
+.swirl::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,var(--cream) 0%,transparent 35%)}
+@keyframes swirlMove{to{transform:translateX(-6%) rotate(2deg) scale(1.05)}}
+
+/* finale */
+.scene--finale .stage{grid-template-columns:minmax(0,1fr) minmax(0,1.1fr) minmax(0,1fr)}
+.copy--right{justify-self:end}
+.card{position:absolute;z-index:6;background:rgba(251,246,238,.82);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.7);border-radius:14px;padding:12px 16px 12px 12px;display:flex;gap:12px;align-items:center;box-shadow:0 18px 40px -18px rgba(58,33,22,.45);min-width:150px;max-width:220px}
+.card .ic{width:38px;height:38px;border-radius:10px;flex:none;display:grid;place-items:center;background:var(--cream-2)}
+.card small{display:block;font-size:9.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--ink-soft)}
+.card strong{display:block;font-weight:600;font-size:13px;line-height:1.3}
+.card--origin{left:0;top:14%}
+.card--roast{right:4%;top:6%}
+.card--flavor{right:2%;bottom:20%}
+.card--process{left:2%;bottom:24%}
+.find-cup{position:absolute;left:50%;bottom:6%;transform:translateX(-50%);z-index:7}
+
+/* ---------- content sections ---------- */
+.section{padding-block:clamp(80px,12vw,160px);padding-left:max(var(--pad-x),var(--gutter-l));padding-right:max(var(--pad-x),var(--gutter-r));position:relative}
+.sec-head{display:flex;justify-content:space-between;align-items:end;gap:24px;flex-wrap:wrap;margin-bottom:clamp(36px,5vw,64px)}
+.sec-head h2{font-family:var(--f-display);font-weight:400;text-transform:uppercase;font-size:clamp(40px,5.4vw,84px);line-height:.9;margin:12px 0 0;text-wrap:balance}
+.sec-head p{max-width:38ch;color:var(--ink-soft);margin:0}
+
+.roasts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(16px,2vw,28px)}
+.roast{background:var(--paper);border-radius:22px;padding:22px;display:grid;gap:18px;position:relative;overflow:hidden;transition:transform .5s cubic-bezier(.2,.7,.2,1),box-shadow .5s}
+.roast:hover{transform:translateY(-8px);box-shadow:0 30px 60px -30px rgba(58,33,22,.4)}
+.roast__art{aspect-ratio:4/4.4;max-width:100%;border-radius:14px;display:grid;place-items:center;position:relative;overflow:hidden}
+.roast__art svg{width:62%;transition:transform .7s cubic-bezier(.2,.7,.2,1)}
+.roast:hover .roast__art svg{transform:translateY(-6px) rotate(-3deg)}
+.roast__meta{display:flex;justify-content:space-between;gap:12px;align-items:baseline}
+.roast h3{font-family:var(--f-display);font-weight:400;font-size:28px;margin:0;line-height:1}
+.roast .price{font-variant-numeric:tabular-nums;font-weight:600}
+.roast .notes{font-size:13px;color:var(--ink-soft);margin:0}
+.meter{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-soft);align-items:center}
+.meter span.bar{height:3px;background:var(--line);border-radius:3px;position:relative;overflow:hidden}
+.meter span.bar i{position:absolute;inset:0 auto 0 0;background:var(--roast);border-radius:3px}
+.tag{position:absolute;top:18px;left:18px;font-size:10px;letter-spacing:.2em;text-transform:uppercase;background:var(--ink);color:var(--cream);padding:6px 10px;border-radius:999px;z-index:2}
+
+.ritual{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-top:1px solid var(--line)}
+.ritual div{padding:28px 24px 0 0;display:grid;gap:10px;align-content:start;min-width:0}
+.ritual div + div{padding-left:24px;border-left:1px solid var(--line)}
+.ritual b{font-family:var(--f-display);font-weight:400;font-size:clamp(40px,4.4vw,64px);line-height:1;font-variant-numeric:tabular-nums}
+.ritual span{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-soft)}
+.ritual p{margin:0;font-size:13.5px;color:var(--ink-soft)}
+
+.marquee{overflow:hidden;border-block:1px solid var(--line);padding-block:22px;background:var(--paper)}
+.marquee__track{display:flex;gap:48px;width:max-content;animation:marq 38s linear infinite;font-family:var(--f-display);text-transform:uppercase;font-size:clamp(26px,3.4vw,46px);white-space:nowrap}
+.marquee__track em{font-style:normal;color:var(--caramel)}
+@keyframes marq{to{transform:translateX(-50%)}}
+
+.cta{background:var(--espresso);color:var(--cream);border-radius:28px;margin-inline:max(var(--pad-x),var(--gutter-l)) max(var(--pad-x),var(--gutter-r));padding:clamp(40px,7vw,96px) clamp(22px,6vw,90px);display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:40px;align-items:end;position:relative;overflow:hidden}
+.cta h2{font-family:var(--f-display);font-weight:400;text-transform:uppercase;font-size:clamp(40px,6vw,96px);line-height:.9;margin:0}
+.cta p{color:rgba(243,234,220,.7);margin:0 0 22px}
+.cta form{display:flex;gap:8px;border:1px solid rgba(243,234,220,.3);border-radius:999px;padding:6px;flex-wrap:wrap}
+.cta input{flex:1;min-width:0;background:transparent;border:0;color:var(--cream);padding:10px 16px;font:inherit;outline:none}
+.cta input::placeholder{color:rgba(243,234,220,.5)}
+.cta .btn{background:var(--cream);color:var(--ink);border-color:var(--cream)}
+.cta .ok{font-size:12px;color:var(--caramel);margin-top:12px;min-height:1.2em}
+.cta svg.steam{position:absolute;right:-40px;top:-40px;width:320px;opacity:.12}
+
+.foot{padding-block:70px 40px;padding-left:max(var(--pad-x),var(--gutter-l));padding-right:max(var(--pad-x),var(--gutter-r));display:grid;grid-template-columns:2fr repeat(3,1fr);gap:32px;font-size:13px;color:var(--ink-soft)}
+.foot h4{font-size:10.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--ink);margin:0 0 14px;font-weight:600}
+.foot ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.foot a:hover{color:var(--ink)}
+.foot .big{font-family:var(--f-display);font-size:clamp(48px,9vw,140px);line-height:.85;color:var(--ink);grid-column:1/-1;letter-spacing:-.01em;border-top:1px solid var(--line);padding-top:30px;margin-top:20px;display:flex;justify-content:space-between;align-items:end;flex-wrap:wrap;gap:16px}
+.foot .big small{font-family:var(--f-body);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-soft)}
+
+/* reveal */
+.rv{opacity:1;transform:none}
+.js .rv{opacity:0;transform:translateY(40px)}
+
+/* ---------- responsive ---------- */
+@media (max-width:1100px){
+  .nav{display:none}
+  .menu-toggle{display:grid;place-items:center}
+  .hdr .btn{display:none}
+  .roasts{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .ritual{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .ritual div:nth-child(3){padding-left:0;border-left:0}
+}
+@media (max-width:820px){
+  .stage,.scene--finale .stage{grid-template-columns:minmax(0,1fr);grid-template-rows:auto 1fr;align-items:start;padding-block:84px 20px}
+  .aside,.side-arrow,.rail{display:none}
+  .copy{max-width:none}
+  .display{font-size:clamp(48px,14vw,84px);margin:10px 0 12px}
+  .display--md{font-size:clamp(40px,11vw,70px)}
+  .lede{font-size:13.5px;margin-bottom:14px}
+  .visual{height:auto;align-self:stretch}
+  .visual svg{max-height:52vh}
+  .copy--right{display:none}
+  .card{min-width:0;max-width:170px;padding:8px 10px 8px 8px}
+  .card .ic{width:30px;height:30px}
+  .card--origin{left:0;top:auto;bottom:34%}
+  .card--roast{right:0;top:auto;bottom:40%}
+  .card--flavor{right:0;bottom:14%}
+  .card--process{display:none}
+  .roasts{grid-template-columns:minmax(0,1fr)}
+  .cta{grid-template-columns:minmax(0,1fr)}
+  .foot{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .foot > div:first-child{grid-column:1/-1}
+  .scroll-hint{display:none}
+}
+@media (prefers-reduced-motion:reduce){
+  .marquee__track,.swirl::before,.scroll-hint i::after{animation:none}
+}
+</style>
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+
+<!-- shared SVG defs -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <filter id="swirlFx"><feTurbulence type="fractalNoise" baseFrequency=".006 .018" numOctaves="3" seed="7"/><feDisplacementMap in="SourceGraphic" scale="160"/></filter>
+    <filter id="soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="14"/></filter>
+    <filter id="blur3"><feGaussianBlur stdDeviation="3"/></filter>
+    <filter id="speckle" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency="1.2" numOctaves="1" seed="3" result="n"/><feColorMatrix in="n" type="matrix" values="0 0 0 0 .35  0 0 0 0 .25  0 0 0 0 .18  0 0 0 -2.2 1.25"/><feComposite in2="SourceGraphic" operator="in"/></filter>
+
+    <radialGradient id="beanG" cx="38%" cy="30%" r="80%">
+      <stop offset="0" stop-color="#8a5638"/><stop offset=".35" stop-color="#5a321f"/><stop offset=".75" stop-color="#2f170c"/><stop offset="1" stop-color="#1a0c06"/>
+    </radialGradient>
+    <radialGradient id="beanHi" cx="35%" cy="25%" r="40%">
+      <stop offset="0" stop-color="#f3d2b2" stop-opacity=".55"/><stop offset="1" stop-color="#f3d2b2" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="steel" x1="0" x2="1">
+      <stop offset="0" stop-color="#6f6a63"/><stop offset=".18" stop-color="#e9e6e0"/><stop offset=".35" stop-color="#9c978f"/><stop offset=".62" stop-color="#f6f4ef"/><stop offset=".85" stop-color="#8c877f"/><stop offset="1" stop-color="#4c4842"/>
+    </linearGradient>
+    <linearGradient id="brass" x1="0" x2="1">
+      <stop offset="0" stop-color="#6b4a1c"/><stop offset=".3" stop-color="#e6c27a"/><stop offset=".55" stop-color="#a77a34"/><stop offset=".8" stop-color="#f1d595"/><stop offset="1" stop-color="#5e3f15"/>
+    </linearGradient>
+    <linearGradient id="stream" x1="0" x2="1">
+      <stop offset="0" stop-color="#1c0d06"/><stop offset=".35" stop-color="#6b3a1d"/><stop offset=".55" stop-color="#a5622f"/><stop offset=".75" stop-color="#4a2410"/><stop offset="1" stop-color="#140904"/>
+    </linearGradient>
+    <linearGradient id="clayG" x1="0" x2="1">
+      <stop offset="0" stop-color="#6e2f17"/><stop offset=".25" stop-color="#b8663f"/><stop offset=".45" stop-color="#d98a5f"/><stop offset=".7" stop-color="#a5532f"/><stop offset="1" stop-color="#5a2410"/>
+    </linearGradient>
+    <radialGradient id="coffeeTop" cx="45%" cy="40%" r="70%">
+      <stop offset="0" stop-color="#7a4422"/><stop offset=".55" stop-color="#3a1b0b"/><stop offset="1" stop-color="#1a0b04"/>
+    </radialGradient>
+    <linearGradient id="glass" x1="0" x2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset=".15" stop-color="#fff" stop-opacity=".08"/><stop offset=".8" stop-color="#fff" stop-opacity=".05"/><stop offset=".92" stop-color="#fff" stop-opacity=".45"/><stop offset="1" stop-color="#fff" stop-opacity=".1"/>
+    </linearGradient>
+    <linearGradient id="brew" x1="0" x2="1">
+      <stop offset="0" stop-color="#2a1006"/><stop offset=".4" stop-color="#6b2f10"/><stop offset=".6" stop-color="#8a4318"/><stop offset="1" stop-color="#1e0a03"/>
+    </linearGradient>
+    <linearGradient id="ceramic" x1="0" x2="1">
+      <stop offset="0" stop-color="#8d7b6a"/><stop offset=".22" stop-color="#d9cbbb"/><stop offset=".45" stop-color="#efe5d8"/><stop offset=".75" stop-color="#bba897"/><stop offset="1" stop-color="#6d5c4d"/>
+    </linearGradient>
+    <radialGradient id="latte" cx="50%" cy="50%" r="55%">
+      <stop offset="0" stop-color="#d9a873"/><stop offset=".7" stop-color="#a8682f"/><stop offset=".92" stop-color="#7b4419"/><stop offset="1" stop-color="#5a2e10"/>
+    </radialGradient>
+    <radialGradient id="shadow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#3a2116" stop-opacity=".45"/><stop offset="1" stop-color="#3a2116" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- coffee bean, centred on 0,0 -->
+    <g id="bean">
+      <ellipse cx="0" cy="0" rx="92" ry="128" fill="url(#beanG)"/>
+      <ellipse cx="0" cy="0" rx="92" ry="128" fill="url(#beanHi)"/>
+      <path d="M6,-122 C-34,-70 34,-30 -4,18 C-36,58 24,92 2,124" fill="none" stroke="#120703" stroke-width="13" stroke-linecap="round"/>
+      <path d="M12,-118 C-26,-68 42,-28 4,20 C-28,60 30,92 9,122" fill="none" stroke="#a56a46" stroke-opacity=".45" stroke-width="3" stroke-linecap="round"/>
+      <ellipse cx="0" cy="0" rx="92" ry="128" fill="none" stroke="#000" stroke-opacity=".25" stroke-width="2"/>
+    </g>
+
+    <!-- latte mug, origin at rim centre -->
+    <g id="mug">
+      <ellipse cx="0" cy="250" rx="190" ry="34" fill="url(#shadow)"/>
+      <path d="M150,30 C250,10 268,150 150,170" fill="none" stroke="url(#ceramic)" stroke-width="30" stroke-linecap="round"/>
+      <path d="M150,30 C250,10 268,150 150,170" fill="none" stroke="#000" stroke-opacity=".12" stroke-width="30" stroke-linecap="round" transform="translate(3,4)"/>
+      <path d="M-170,0 C-170,120 -150,215 -70,236 C-30,246 30,246 70,236 C150,215 170,120 170,0 Z" fill="url(#ceramic)"/>
+      <path d="M-170,0 C-170,120 -150,215 -70,236 C-30,246 30,246 70,236 C150,215 170,120 170,0 Z" fill="#fff" filter="url(#speckle)" opacity=".7"/>
+      <path d="M-130,30 C-128,120 -110,190 -70,214" fill="none" stroke="#fff" stroke-opacity=".35" stroke-width="10" stroke-linecap="round" filter="url(#blur3)"/>
+      <ellipse cx="0" cy="0" rx="170" ry="46" fill="#e9dccb"/>
+      <ellipse cx="0" cy="4" rx="156" ry="38" fill="url(#latte)"/>
+      <g transform="translate(0,6) scale(1,.26)">
+        <g fill="#fbf3e6">
+          <path d="M0,-105 C46,-105 62,-60 0,-36 C-62,-60 -46,-105 0,-105Z"/>
+          <path d="M-96,-20 C-70,-60 70,-60 96,-20 C60,-36 -60,-36 -96,-20Z"/>
+          <path d="M-108,18 C-80,-24 80,-24 108,18 C66,0 -66,0 -108,18Z"/>
+          <path d="M-112,56 C-84,14 84,14 112,56 C70,38 -70,38 -112,56Z"/>
+          <path d="M-104,92 C-76,54 76,54 104,92 C66,76 -66,76 -104,92Z"/>
+          <path d="M-84,122 C-60,92 60,92 84,122 C52,110 -52,110 -84,122Z"/>
+        </g>
+        <path d="M0,-40 L0,140" stroke="#fbf3e6" stroke-width="6" stroke-linecap="round"/>
+      </g>
+    </g>
+  </defs>
+</svg>
+
+<div class="loader" id="loader" role="status" aria-label="Loading">
+  <div class="loader__inner">
+    <div class="loader__brand">ROAST <span style="opacity:.4">/</span> RITUAL</div>
+    <div class="loader__bar"><i id="loadBar"></i></div>
+    <div class="loader__count" id="loadCount">000</div>
+  </div>
+</div>
+
+<header class="hdr" id="hdr">
+  <a href="#top" class="brand">ROAST<span>/</span>RITUAL</a>
+  <nav class="nav" aria-label="Main">
+    <a href="#top" class="active">Home</a>
+    <a href="#bloom">Beans</a>
+    <a href="#pour">Brew &amp; Coffee</a>
+    <a href="#roasts">Shop</a>
+    <a href="#ritual">Origins</a>
+    <a href="#join">Community</a>
+    <a href="#join">Journal</a>
+  </nav>
+  <a href="#roasts" class="btn btn--dark">Order now <span class="arr">→</span></a>
+  <button class="menu-toggle" aria-label="Open menu"><svg width="16" height="10" viewBox="0 0 16 10"><path d="M0 1h16M0 9h16" stroke="currentColor" stroke-width="1.5"/></svg></button>
+</header>
+
+<nav class="rail" id="rail" aria-label="Sections"></nav>
+<button class="fab" aria-label="Back to top" id="fab"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M2 4h12M2 8h12M2 12h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+
+<main id="top">
+
+<!-- 1 · WAKE THE BEANS -->
+<section class="scene" id="wake" data-label="Wake">
+  <div class="stage">
+    <button class="side-arrow" aria-label="Previous">‹</button>
+    <div class="copy">
+      <div class="eyebrow">Wake the beans</div>
+      <h1 class="display"><span class="ln"><span>Wake</span></span><span class="ln"><span>the</span></span><span class="ln"><span>Beans</span></span></h1>
+      <p class="lede">Single-origin coffee, roasted in 12&nbsp;kg batches every Tuesday and shipped within 48 hours. Every bag tells you who grew it and how it was roasted.</p>
+      <a href="#roasts" class="btn btn--dark">Shop beans <span class="arr">→</span></a>
+    </div>
+    <div class="visual">
+      <canvas id="grounds" aria-hidden="true"></canvas>
+      <svg viewBox="0 0 600 720" aria-hidden="true">
+        <ellipse cx="300" cy="640" rx="210" ry="26" fill="url(#shadow)" id="beanShadow"/>
+        <!-- portafilter -->
+        <g id="porta" transform="translate(0,-420)">
+          <rect x="235" y="-200" width="130" height="250" fill="url(#steel)"/>
+          <rect x="220" y="40" width="160" height="30" rx="6" fill="url(#brass)"/>
+          <rect x="246" y="70" width="108" height="56" rx="10" fill="url(#steel)"/>
+          <path d="M276,126 L324,126 L314,160 L286,160Z" fill="url(#brass)"/>
+          <rect x="288" y="160" width="24" height="18" rx="3" fill="url(#steel)"/>
+          <rect x="370" y="78" width="150" height="26" rx="13" fill="#1d1712"/>
+          <rect x="350" y="82" width="34" height="18" fill="url(#steel)"/>
+        </g>
+        <!-- pour stream -->
+        <clipPath id="streamClip"><rect id="streamClipRect" x="200" y="-260" width="200" height="0"/></clipPath>
+        <g clip-path="url(#streamClip)">
+          <path d="M292,-240 C292,200 296,380 286,600 C284,640 316,640 314,600 C304,380 308,200 308,-240Z" fill="url(#stream)"/>
+          <ellipse id="streamPool" cx="300" cy="600" rx="40" ry="10" fill="#2a1308"/>
+        </g>
+        <g id="beanL" transform="translate(250,400) rotate(-14)"><use href="#bean"/></g>
+        <g id="beanR" transform="translate(358,410) rotate(16) scale(-1,1)"><use href="#bean"/></g>
+      </svg>
+      <div class="hero-dots" aria-hidden="true"><i></i><i></i><i></i></div>
+    </div>
+    <div class="aside"><span>Harvest</span><b>2026</b><span>Fresh crop</span></div>
+    <div class="scroll-hint"><i></i>Scroll</div>
+  </div>
+</section>
+
+<!-- 2 · LET IT BLOOM -->
+<section class="scene scene--bloom" id="bloom" data-label="Bloom">
+  <div class="stage">
+    <div class="ghost-word" aria-hidden="true">Bloom</div>
+    <div class="copy">
+      <span class="step-no">2.</span>
+      <div class="eyebrow">Let it bloom</div>
+      <h2 class="display display--md"><span class="ln"><span>Let it</span></span><span class="ln"><span>Bloom</span></span></h2>
+      <p class="lede">Wet the grounds with twice their weight in 94&nbsp;°C water and wait 40 seconds. The CO₂ escapes, the bed rises, and the aroma opens up.</p>
+      <a href="#pour" class="btn btn--ghost">Brew guide <span class="arr">→</span></a>
+    </div>
+    <div class="visual">
+      <svg viewBox="0 0 600 720" aria-hidden="true">
+        <ellipse cx="300" cy="660" rx="200" ry="24" fill="url(#shadow)"/>
+        <!-- kettle stream -->
+        <clipPath id="bloomClip"><rect id="bloomClipRect" x="200" y="-40" width="200" height="0"/></clipPath>
+        <path clip-path="url(#bloomClip)" d="M294,-40 C292,120 300,200 296,330 L306,330 C310,200 306,120 306,-40Z" fill="url(#stream)"/>
+        <!-- dripper -->
+        <g id="dripper">
+          <path d="M140,330 L460,330 L370,560 L230,560Z" fill="url(#clayG)"/>
+          <g stroke="#4a1c0a" stroke-opacity=".25" stroke-width="3">
+            <path d="M190,340 L262,552"/><path d="M245,340 L285,556"/><path d="M355,340 L315,556"/><path d="M410,340 L338,552"/>
+          </g>
+          <path d="M455,360 C540,350 540,470 420,470" fill="none" stroke="url(#clayG)" stroke-width="24" stroke-linecap="round"/>
+          <rect x="250" y="556" width="100" height="26" fill="#7a3519"/>
+          <ellipse cx="300" cy="598" rx="150" ry="26" fill="url(#clayG)"/>
+          <ellipse cx="300" cy="590" rx="150" ry="22" fill="#c87a50"/>
+          <ellipse cx="300" cy="330" rx="160" ry="30" fill="#e6a27a"/>
+          <ellipse cx="300" cy="334" rx="146" ry="24" fill="#7a3519"/>
+          <ellipse id="bloomBed" cx="300" cy="350" rx="128" ry="18" fill="url(#coffeeTop)"/>
+          <g id="bubbles" fill="#c99a6e" fill-opacity=".55"></g>
+        </g>
+        <g id="splash"></g>
+      </svg>
+    </div>
+    <div class="aside"><span>Ratio</span><b>1 : 16</b><span>15 g / 250 ml</span></div>
+  </div>
+</section>
+
+<!-- 3 · SLOW POUR -->
+<section class="scene" id="pour" data-label="Pour">
+  <div class="stage">
+    <div class="copy">
+      <span class="step-no">3.</span>
+      <div class="eyebrow">Slow pour</div>
+      <h2 class="display display--md"><span class="ln"><span>Slow</span></span><span class="ln"><span>Pour</span></span></h2>
+      <p class="lede">Pour in slow circles until 250&nbsp;g, keeping off the paper. Total brew time is about 3:00. The cup comes out clean and sweet.</p>
+      <a href="#sip" class="btn btn--ghost">Watch the method <span class="arr">→</span></a>
+    </div>
+    <div class="visual">
+      <svg viewBox="0 0 600 760" aria-hidden="true">
+        <ellipse cx="300" cy="712" rx="210" ry="24" fill="url(#shadow)"/>
+        <!-- dripper on top -->
+        <g transform="translate(300,0) scale(.72) translate(-300,-250)">
+          <path d="M140,330 L460,330 L370,560 L230,560Z" fill="url(#clayG)"/>
+          <g stroke="#4a1c0a" stroke-opacity=".25" stroke-width="3"><path d="M190,340 L262,552"/><path d="M245,340 L285,556"/><path d="M355,340 L315,556"/><path d="M410,340 L338,552"/></g>
+          <path d="M455,360 C540,350 540,470 420,470" fill="none" stroke="url(#clayG)" stroke-width="24" stroke-linecap="round"/>
+          <rect x="250" y="556" width="100" height="26" fill="#7a3519"/>
+          <ellipse cx="300" cy="598" rx="150" ry="26" fill="url(#clayG)"/>
+          <ellipse cx="300" cy="590" rx="150" ry="22" fill="#c87a50"/>
+          <ellipse cx="300" cy="330" rx="160" ry="30" fill="#e6a27a"/>
+          <ellipse cx="300" cy="336" rx="140" ry="22" fill="url(#coffeeTop)"/>
+        </g>
+        <!-- drip stream -->
+        <clipPath id="dripClip"><rect id="dripClipRect" x="250" y="245" width="100" height="0"/></clipPath>
+        <path clip-path="url(#dripClip)" d="M296,245 C294,400 302,520 297,700 L303,700 C300,520 306,400 304,245Z" fill="url(#brew)"/>
+        <!-- glass server -->
+        <clipPath id="serverClip"><path d="M220,300 L380,300 L380,340 C470,380 520,460 510,560 C500,650 420,700 300,700 C180,700 100,650 90,560 C80,460 130,380 220,340Z"/></clipPath>
+        <g clip-path="url(#serverClip)">
+          <rect id="brewFill" x="60" y="700" width="480" height="420" fill="url(#brew)"/>
+          <ellipse id="brewTop" cx="300" cy="700" rx="230" ry="18" fill="#9a5426" opacity=".9"/>
+        </g>
+        <path d="M220,300 L380,300 L380,340 C470,380 520,460 510,560 C500,650 420,700 300,700 C180,700 100,650 90,560 C80,460 130,380 220,340Z" fill="url(#glass)" stroke="#fff" stroke-opacity=".7" stroke-width="2.5"/>
+        <path d="M140,430 C110,500 118,600 170,650" fill="none" stroke="#fff" stroke-opacity=".7" stroke-width="7" stroke-linecap="round"/>
+        <path d="M498,450 C560,440 570,590 480,600" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="16" stroke-linecap="round"/>
+        <path d="M498,450 C560,440 570,590 480,600" fill="none" stroke="#3a2116" stroke-opacity=".12" stroke-width="16" stroke-linecap="round" transform="translate(2,3)"/>
+        <g font-family="Instrument Sans, sans-serif" font-size="11" fill="#fff" fill-opacity=".8" letter-spacing="2">
+          <path d="M150,470h16M146,520h22M150,570h16" stroke="#fff" stroke-opacity=".7" stroke-width="2"/>
+          <text x="174" y="474">600</text><text x="174" y="524">400</text><text x="174" y="574">200</text>
+        </g>
+      </svg>
+    </div>
+    <div class="aside"><span>Brew time</span><b id="brewTimer">0:00</b><span>Target 3:00</span></div>
+  </div>
+</section>
+
+<!-- 4 · SIP THE UNEXPECTED -->
+<section class="scene" id="sip" data-label="Sip">
+  <div class="stage">
+    <div class="swirl" aria-hidden="true"></div>
+    <div class="copy">
+      <div class="eyebrow">Step 4</div>
+      <h2 class="display display--md"><span class="ln"><span>Sip the</span></span><span class="ln"><span>Unexpected</span></span></h2>
+      <p class="lede">Steamed whole milk at 60&nbsp;°C, folded into a double ristretto. Notes of caramel and cocoa that stay after the last sip.</p>
+      <a href="#taste" class="btn btn--dark">Find your cup <span class="arr">→</span></a>
+    </div>
+    <div class="visual">
+      <svg viewBox="0 0 600 780" aria-hidden="true">
+        <g id="ribbonBack"></g>
+        <g transform="translate(300,560) scale(.82)"><use href="#mug"/></g>
+        <g id="ribbonFront"></g>
+      </svg>
+    </div>
+    <div class="aside"><span>Milk temp</span><b>60 °C</b><span>Silky microfoam</span></div>
+  </div>
+</section>
+
+<!-- 5 · MAKE TIME TASTE BETTER -->
+<section class="scene scene--finale scene--short" id="taste" data-label="Taste">
+  <div class="stage">
+    <div class="swirl" aria-hidden="true"></div>
+    <div class="copy">
+      <div class="eyebrow">Step 5</div>
+      <h2 class="display display--md" style="font-size:clamp(36px,3.7vw,64px)"><span class="ln"><span>Sip the</span></span><span class="ln"><span>Unexpected</span></span></h2>
+      <p class="lede">Tell us how you brew and what you like. We match you with a coffee and send it fresh every two weeks.</p>
+    </div>
+    <div class="visual">
+      <svg viewBox="0 0 600 640" aria-hidden="true" id="finaleCup">
+        <g transform="translate(300,330)"><use href="#mug"/></g>
+      </svg>
+      <div class="card card--origin"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3a2116" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg></span><span><small>Origin</small><strong>Yirgacheffe, Ethiopia</strong></span></div>
+      <div class="card card--roast"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3a2116" stroke-width="1.6"><path d="M12 3c4 4 5 8 2 12-1.5 2-4 2-5 0-2-4 0-8 3-12z"/><path d="M8 21h8"/></svg></span><span><small>Roast</small><strong>Medium-light · 205 °C</strong></span></div>
+      <div class="card card--flavor"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3a2116" stroke-width="1.6"><path d="M12 21c-5-3-8-7-8-11a4 4 0 0 1 8-1 4 4 0 0 1 8 1c0 4-3 8-8 11z"/></svg></span><span><small>Flavor</small><strong>Jasmine, bergamot, honey</strong></span></div>
+      <div class="card card--process"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3a2116" stroke-width="1.6"><path d="M4 18c4 0 4-6 8-6s4 6 8 6M4 12c4 0 4-6 8-6s4 6 8 6"/></svg></span><span><small>Process</small><strong>Washed · 1,950 m</strong></span></div>
+      <a href="#roasts" class="btn btn--dark find-cup">Find your cup <span class="arr">→</span></a>
+    </div>
+    <div class="copy copy--right">
+      <div class="eyebrow">Section 5</div>
+      <h2 class="display display--md" style="font-size:clamp(36px,3.7vw,64px)"><span class="ln"><span>Make time</span></span><span class="ln"><span>taste better</span></span></h2>
+      <p class="lede">Free shipping on subscriptions. Pause, skip or change your coffee whenever you want.</p>
+    </div>
+  </div>
+</section>
+
+<div class="marquee" aria-hidden="true">
+  <div class="marquee__track">
+    <span>Ethiopia</span><em>✦</em><span>Colombia</span><em>✦</em><span>Kenya</span><em>✦</em><span>Guatemala</span><em>✦</em><span>Yemen</span><em>✦</em><span>Brazil</span><em>✦</em>
+    <span>Ethiopia</span><em>✦</em><span>Colombia</span><em>✦</em><span>Kenya</span><em>✦</em><span>Guatemala</span><em>✦</em><span>Yemen</span><em>✦</em><span>Brazil</span><em>✦</em>
+  </div>
+</div>
+
+<!-- shop -->
+<section class="section" id="roasts">
+  <div class="sec-head rv">
+    <div><div class="eyebrow">This week's roasts</div><h2>Fresh off<br>the drum</h2></div>
+    <p>Three coffees, roasted to order. Each 250&nbsp;g bag lists the farm, altitude, process and roast date.</p>
+  </div>
+  <div class="roasts">
+    <article class="roast rv">
+      <div class="roast__art" style="background:#e9d6bd"><span class="tag">Bestseller</span><svg viewBox="0 0 200 260" data-bag="#2b1b13" data-label="#e9d6bd"></svg></div>
+      <div class="roast__meta"><h3>Yirgacheffe</h3><span class="price">$19</span></div>
+      <p class="notes">Ethiopia · Washed · Jasmine, bergamot, honey</p>
+      <div class="meter"><span>Roast</span><span class="bar"><i style="width:35%"></i></span><span>Body</span><span class="bar"><i style="width:45%"></i></span></div>
+    </article>
+    <article class="roast rv">
+      <div class="roast__art" style="background:#d9b48c"><svg viewBox="0 0 200 260" data-bag="#f3eadc" data-label="#b5603b"></svg></div>
+      <div class="roast__meta"><h3>Huila Reserve</h3><span class="price">$21</span></div>
+      <p class="notes">Colombia · Honey · Red apple, panela, cocoa</p>
+      <div class="meter"><span>Roast</span><span class="bar"><i style="width:55%"></i></span><span>Body</span><span class="bar"><i style="width:65%"></i></span></div>
+    </article>
+    <article class="roast rv">
+      <div class="roast__art" style="background:#3a2116"><span class="tag" style="background:var(--cream);color:var(--ink)">New</span><svg viewBox="0 0 200 260" data-bag="#c8894f" data-label="#1b1410"></svg></div>
+      <div class="roast__meta"><h3>Midnight Espresso</h3><span class="price">$18</span></div>
+      <p class="notes">Brazil &amp; Guatemala · Natural · Dark chocolate, hazelnut</p>
+      <div class="meter"><span>Roast</span><span class="bar"><i style="width:80%"></i></span><span>Body</span><span class="bar"><i style="width:90%"></i></span></div>
+    </article>
+  </div>
+</section>
+
+<!-- ritual numbers -->
+<section class="section" id="ritual" style="padding-top:0">
+  <div class="sec-head rv">
+    <div><div class="eyebrow">The ritual</div><h2>From farm<br>to cup</h2></div>
+    <p>We buy directly from 14 farms and pay well above the Fairtrade minimum. Here is what one bag involves.</p>
+  </div>
+  <div class="ritual rv">
+    <div><span>Altitude</span><b data-count="1950">0</b><p>metres above sea level, where the cherries ripen slowly.</p></div>
+    <div><span>Roast batch</span><b data-count="12">0</b><p>kilograms per batch, so every bag tastes like the last one.</p></div>
+    <div><span>Cupping score</span><b data-count="88">0</b><p>average SCA score across this season's lots.</p></div>
+    <div><span>Roast to door</span><b data-count="48">0</b><p>hours from our drum to your doorstep.</p></div>
+  </div>
+</section>
+
+<!-- join -->
+<section class="cta rv" id="join">
+  <svg class="steam" viewBox="0 0 200 200" aria-hidden="true"><path d="M60 190c-30-40 30-60 0-100s30-60 0-90M100 190c-30-40 30-60 0-100s30-60 0-90M140 190c-30-40 30-60 0-100s30-60 0-90" fill="none" stroke="#f3eadc" stroke-width="6" stroke-linecap="round"/></svg>
+  <h2>Get 15% off<br>your first bag</h2>
+  <div>
+    <p>Join the Ritual letter: one email a week with new roasts, brew recipes and farm stories.</p>
+    <form id="joinForm" novalidate>
+      <label for="email" style="position:absolute;left:-9999px">Email address</label>
+      <input id="email" type="email" placeholder="you@email.com" required>
+      <button class="btn" type="submit">Subscribe <span class="arr">→</span></button>
+    </form>
+    <div class="ok" id="joinMsg" aria-live="polite"></div>
+  </div>
+</section>
+
+<footer class="foot">
+  <div><div class="brand" style="margin-bottom:14px">ROAST<span>/</span>RITUAL</div><p style="max-width:32ch;margin:0">Small-batch specialty roastery. Open daily 7:00–19:00.<br>14 Mill Lane, Roastery Quarter.</p></div>
+  <div><h4>Shop</h4><ul><li><a href="#roasts">Coffee</a></li><li><a href="#roasts">Subscriptions</a></li><li><a href="#roasts">Brew gear</a></li><li><a href="#roasts">Gift cards</a></li></ul></div>
+  <div><h4>Learn</h4><ul><li><a href="#bloom">Brew guides</a></li><li><a href="#ritual">Our farms</a></li><li><a href="#join">Journal</a></li><li><a href="#join">Workshops</a></li></ul></div>
+  <div><h4>Follow</h4><ul><li><a href="https://instagram.com" target="_blank" rel="noopener">Instagram</a></li><li><a href="https://tiktok.com" target="_blank" rel="noopener">TikTok</a></li><li><a href="https://pinterest.com" target="_blank" rel="noopener">Pinterest</a></li></ul></div>
+  <div class="big">ROAST / RITUAL <small>© 2026 · Roasted with care</small></div>
+</footer>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lenis@1.1.13/dist/lenis.min.js"></script>
+<script>
+(() => {
+  const NS = "http://www.w3.org/2000/svg";
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const hasGsap = !!window.gsap && !!window.ScrollTrigger;
+  const el = (tag, attrs, parent) => { const n = document.createElementNS(NS, tag); for (const k in attrs) n.setAttribute(k, attrs[k]); parent && parent.appendChild(n); return n; };
+  const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+  const seg = (p, a, b) => clamp((p - a) / (b - a));
+
+  /* ---------- coffee bags (shop) ---------- */
+  $$("svg[data-bag]").forEach(svg => {
+    const c = svg.dataset.bag, l = svg.dataset.label;
+    svg.innerHTML = `
+      <ellipse cx="100" cy="250" rx="80" ry="8" fill="#000" opacity=".18"/>
+      <path d="M30,40 L170,40 L178,244 L22,244Z" fill="${c}"/>
+      <path d="M30,40 L170,40 L172,62 L28,62Z" fill="#000" opacity=".15"/>
+      <path d="M30,22 L170,22 L170,42 L30,42Z" fill="${c}"/><path d="M30,22 L170,22 L170,26 L30,26Z" fill="#fff" opacity=".2"/>
+      <path d="M40,40 L48,244" stroke="#fff" stroke-opacity=".12" stroke-width="10"/>
+      <rect x="52" y="96" width="96" height="104" rx="4" fill="${l}"/>
+      <text x="100" y="128" text-anchor="middle" font-family="Bodoni Moda, serif" font-size="15" fill="${c}">ROAST</text>
+      <text x="100" y="146" text-anchor="middle" font-family="Bodoni Moda, serif" font-size="15" fill="${c}">RITUAL</text>
+      <line x1="70" x2="130" y1="160" y2="160" stroke="${c}" stroke-opacity=".5"/>
+      <text x="100" y="180" text-anchor="middle" font-family="Instrument Sans, sans-serif" font-size="8" letter-spacing="2" fill="${c}">250 G · WHOLE BEAN</text>
+      <circle cx="100" cy="74" r="7" fill="none" stroke="#fff" stroke-opacity=".35" stroke-width="2"/>`;
+  });
+
+  /* ---------- side rail ---------- */
+  const scenes = $$(".scene");
+  const rail = $("#rail");
+  scenes.forEach(s => { const b = document.createElement("button"); b.setAttribute("aria-label", s.dataset.label); b.onclick = () => go(s); rail.appendChild(b); });
+  const go = target => { const y = target.getBoundingClientRect().top + scrollY; lenis ? lenis.scrollTo(y) : scrollTo({ top: y, behavior: "smooth" }); };
+  $("#fab").onclick = () => go(document.body);
+  $$('a[href^="#"]').forEach(a => a.addEventListener("click", e => { const t = $(a.getAttribute("href")); if (t) { e.preventDefault(); go(a.getAttribute("href") === "#top" ? document.body : t); } }));
+
+  /* ---------- form ---------- */
+  $("#joinForm").addEventListener("submit", e => {
+    e.preventDefault();
+    const v = $("#email").value.trim();
+    $("#joinMsg").textContent = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? "Thanks. Your code BLOOM15 is on its way." : "Enter an email address like name@example.com.";
+  });
+
+  /* ---------- hero grounds particles (canvas) ---------- */
+  const cv = $("#grounds"), ctx = cv.getContext("2d");
+  let W = 0, H = 0, dpr = Math.min(devicePixelRatio || 1, 2), heroP = 0;
+  const parts = Array.from({ length: 170 }, () => {
+    const a = -Math.PI / 2.6 + (Math.random() - .5) * 1.3;
+    return { a, d: Math.random() * .9, sp: .4 + Math.random() * 1.4, r: .8 + Math.random() * 3.4, ph: Math.random() * 6.28, rot: Math.random() * 6.28, shade: Math.random() };
+  });
+  const resize = () => { const r = cv.getBoundingClientRect(); W = r.width; H = r.height; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); };
+  addEventListener("resize", resize); resize();
+  const drawGrounds = t => {
+    ctx.clearRect(0, 0, W, H);
+    const s = Math.min(W, H * .85) / 600;
+    const ox = W / 2 + 60 * s, oy = H / 2 - 120 * s;
+    const burst = .25 + heroP * 2.2;
+    for (const p of parts) {
+      const dist = (40 + p.d * 180 * burst) * s * p.sp;
+      const x = ox + Math.cos(p.a) * dist + Math.sin(t * .0008 + p.ph) * 6 * s;
+      const y = oy + Math.sin(p.a) * dist + Math.cos(t * .0007 + p.ph) * 6 * s + heroP * heroP * 260 * s * p.d;
+      const alpha = clamp(1 - heroP * 1.1) * (.55 + p.shade * .45);
+      if (alpha <= 0) continue;
+      ctx.save(); ctx.translate(x, y); ctx.rotate(p.rot + t * .0004);
+      ctx.fillStyle = `rgba(${40 + p.shade * 50 | 0},${20 + p.shade * 25 | 0},${10 + p.shade * 10 | 0},${alpha})`;
+      ctx.beginPath(); ctx.ellipse(0, 0, p.r * s * 1.6, p.r * s, 0, 0, 6.283); ctx.fill(); ctx.restore();
+    }
+  };
+
+  /* ---------- bloom: bubbles + splash droplets ---------- */
+  const bub = $("#bubbles");
+  const bubbles = Array.from({ length: 22 }, () => el("circle", { cx: 300 + (Math.random() - .5) * 220, cy: 348 + (Math.random() - .5) * 20, r: 0 }, bub));
+  const splash = $("#splash");
+  const drops = Array.from({ length: 26 }, (_, i) => {
+    const ang = Math.PI + (i / 25) * Math.PI + (Math.random() - .5) * .3;
+    return { n: el("ellipse", { cx: 300, cy: 345, rx: 0, ry: 0, fill: i % 3 ? "#3d1a0a" : "#8a4a22" }, splash), vx: Math.cos(ang) * (90 + Math.random() * 140), vy: Math.sin(ang) * (180 + Math.random() * 160), r: 3 + Math.random() * 7 };
+  });
+  const crown = el("path", { fill: "#4a2110", opacity: 0 }, splash);
+  const setBloom = p => {
+    $("#bloomClipRect").setAttribute("height", 380 * seg(p, 0, .25));
+    const rise = seg(p, .2, .7);
+    $("#bloomBed").setAttribute("cy", 350 - rise * 10); $("#bloomBed").setAttribute("ry", 18 + rise * 4);
+    bubbles.forEach((b, i) => b.setAttribute("r", Math.max(0, Math.sin((rise * 3 + i * .37) * Math.PI)) * (2 + (i % 4)) * rise));
+    const sp = seg(p, .3, .95);
+    drops.forEach(d => {
+      const x = 300 + d.vx * sp * 1.2, y = 345 + d.vy * sp + 520 * sp * sp;
+      d.n.setAttribute("cx", x); d.n.setAttribute("cy", y);
+      const r = sp > 0 && sp < 1 ? d.r * (1 - sp * .5) : 0;
+      d.n.setAttribute("rx", r); d.n.setAttribute("ry", r * 1.25);
+    });
+    const ch = Math.sin(seg(p, .28, .7) * Math.PI) * 90;
+    crown.setAttribute("opacity", ch > 1 ? .95 : 0);
+    let path = "M170,350 ";
+    for (let i = 0; i <= 12; i++) { const x = 170 + i * 260 / 12; const y = 350 - (i % 2 ? ch : ch * .35) * (1 - Math.abs(i - 6) / 9); path += `L${x},${y} `; }
+    crown.setAttribute("d", path + "L430,350 Q300,380 170,350Z");
+  };
+
+  /* ---------- pour: carafe fill ---------- */
+  const setPour = p => {
+    $("#dripClipRect").setAttribute("height", 460 * seg(p, 0, .18) * (1 - seg(p, .9, 1)));
+    const f = seg(p, .1, .92), y = 700 - f * 300;
+    $("#brewFill").setAttribute("y", y); $("#brewTop").setAttribute("cy", y);
+    $("#brewTop").setAttribute("rx", 130 + 110 * Math.sin(Math.min(1, f * 1.4) * Math.PI / 2));
+    const sec = Math.round(f * 180);
+    $("#brewTimer").textContent = `${sec / 60 | 0}:${String(sec % 60).padStart(2, "0")}`;
+  };
+
+  /* ---------- sip: helix ribbons ---------- */
+  const back = $("#ribbonBack"), front = $("#ribbonFront");
+  const N = 160, ribbons = [];
+  for (const [col, phase] of [["#5a2c12", 0], ["#f4e6d2", Math.PI]]) {
+    for (let i = 0; i < N; i++) {
+      const t0 = i / N, t1 = (i + 1.4) / N;
+      const pt = t => { const a = t * Math.PI * 5 + phase, r = 150 * (1 - t * .78); return [300 + r * Math.sin(a), 20 + t * 540, Math.cos(a)]; };
+      const [x0, y0, z0] = pt(t0), [x1, y1] = pt(t1);
+      const n = el("line", { x1: x0, y1: y0, x2: x1, y2: y1, stroke: col, "stroke-width": 10 + 16 * (z0 + 1) / 2, "stroke-linecap": "round", opacity: 0 }, z0 > 0 ? front : back);
+      if (z0 > 0 && col[1] === "5") n.setAttribute("stroke", "#7a3c18");
+      ribbons.push({ n, t: t0 });
+    }
+  }
+  const setSip = p => { const head = seg(p, 0, .75), tail = seg(p, .55, 1) * .9; ribbons.forEach(r => r.n.setAttribute("opacity", r.t <= head && r.t >= tail ? 1 : 0)); };
+
+  /* ---------- hero state ---------- */
+  const setHero = p => {
+    heroP = p;
+    const sep = seg(p, .05, .55);
+    $("#beanL").setAttribute("transform", `translate(${250 - sep * 70},${400 + sep * 70}) rotate(${-14 - sep * 22}) scale(${1 - sep * .12})`);
+    $("#beanR").setAttribute("transform", `translate(${358 + sep * 80},${410 + sep * 60}) rotate(${16 + sep * 26}) scale(${-(1 - sep * .12)},${1 - sep * .12})`);
+    const drop = seg(p, .15, .55);
+    $("#porta").setAttribute("transform", `translate(0,${-420 + drop * 300})`);
+    const st = seg(p, .45, .95);
+    $("#streamClipRect").setAttribute("y", -260); $("#streamClipRect").setAttribute("height", st * 900);
+    $("#beanShadow").setAttribute("rx", 210 + sep * 60);
+  };
+
+  /* ---------- render loop for canvas ---------- */
+  const loop = t => { drawGrounds(t); requestAnimationFrame(loop); };
+  requestAnimationFrame(loop);
+
+  /* ---------- defaults (no-JS-lib / reduced motion) ---------- */
+  setHero(0); setBloom(.55); setPour(.7); setSip(.7);
+
+  /* ---------- smooth scroll ---------- */
+  let lenis = null;
+  if (!reduce && window.Lenis) {
+    lenis = new Lenis({ duration: 1.15, smoothWheel: true });
+    if (hasGsap) { lenis.on("scroll", ScrollTrigger.update); gsap.ticker.add(t => lenis.raf(t * 1000)); gsap.ticker.lagSmoothing(0); }
+    else { const r = t => { lenis.raf(t); requestAnimationFrame(r); }; requestAnimationFrame(r); }
+  }
+
+  /* ---------- header + rail state ---------- */
+  const hdr = $("#hdr"), navLinks = $$(".nav a");
+  const onScroll = () => {
+    hdr.classList.toggle("scrolled", scrollY > 40);
+    let idx = 0; scenes.forEach((s, i) => { if (s.getBoundingClientRect().top < innerHeight * .5) idx = i; });
+    $$("button", rail).forEach((b, i) => b.classList.toggle("on", i === idx));
+    const ids = ["#top", "#bloom", "#pour", "#pour", "#roasts"], cur = ids[Math.min(idx, 4)];
+    navLinks.forEach(a => a.classList.toggle("active", a.getAttribute("href") === cur));
+  };
+  addEventListener("scroll", onScroll, { passive: true }); onScroll();
+
+  /* ---------- counters ---------- */
+  const countUp = b => { const to = +b.dataset.count, t0 = performance.now(); const tick = n => { const k = clamp((n - t0) / 1600), e = 1 - Math.pow(1 - k, 3); b.textContent = Math.round(to * e).toLocaleString("en-US"); if (k < 1) requestAnimationFrame(tick); }; requestAnimationFrame(tick); };
+  const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { $$("[data-count]", e.target).forEach(countUp); io.unobserve(e.target); } }), { threshold: .3 });
+  io.observe($(".ritual"));
+
+  /* ---------- loader ---------- */
+  const finishLoad = () => {
+    let n = 0; const bar = $("#loadBar"), cnt = $("#loadCount");
+    const step = () => { n = Math.min(100, n + 4 + Math.random() * 9); bar.style.width = n + "%"; cnt.textContent = String(Math.round(n)).padStart(3, "0"); if (n < 100) setTimeout(step, 40); else setTimeout(() => { $("#loader").classList.add("done"); intro(); }, 200); };
+    reduce ? ($("#loader").classList.add("done"), intro()) : step();
+  };
+  const intro = () => {
+    if (!hasGsap || reduce) return;
+    gsap.from("#wake .display .ln > span", { yPercent: 110, duration: 1.2, ease: "expo.out", stagger: .09 });
+    gsap.from("#wake .eyebrow, #wake .lede, #wake .btn", { y: 24, opacity: 0, duration: 1, ease: "power3.out", stagger: .08, delay: .3 });
+    gsap.from("#beanL, #beanR", { opacity: 0, duration: 1.4, ease: "power2.out", stagger: .1 });
+    gsap.from(".hdr", { y: -30, opacity: 0, duration: 1, ease: "power3.out", delay: .2 });
+  };
+
+  if (!hasGsap || reduce) { finishLoad(); return; }
+  document.documentElement.classList.add("js");
+  gsap.registerPlugin(ScrollTrigger);
+
+  const proxy = (trigger, fn) => { const o = { p: 0 }; gsap.to(o, { p: 1, ease: "none", onUpdate: () => fn(o.p), scrollTrigger: { trigger, start: "top top", end: "bottom bottom", scrub: 1 } }); };
+  proxy("#wake", setHero);
+  proxy("#bloom", setBloom);
+  proxy("#pour", setPour);
+  proxy("#sip", setSip);
+  setBloom(0); setPour(0); setSip(0);
+
+  // copy transitions per scene: headline lines rise in as the scene arrives
+  $$(".scene").forEach((s, i) => {
+    if (i === 0) {
+      gsap.to("#wake .copy", { yPercent: -30, opacity: 0, ease: "none", scrollTrigger: { trigger: s, start: "60% bottom", end: "bottom bottom", scrub: true } });
+      return;
+    }
+    const lines = $$(".display .ln > span", s);
+    gsap.from(lines, { yPercent: 110, ease: "expo.out", duration: 1.1, stagger: .08, scrollTrigger: { trigger: s, start: "top 60%", toggleActions: "play none none reverse" } });
+    gsap.from($$(".eyebrow, .lede, .btn, .step-no", s), { y: 30, opacity: 0, duration: .9, ease: "power3.out", stagger: .06, scrollTrigger: { trigger: s, start: "top 55%", toggleActions: "play none none reverse" } });
+    if (s.id !== "taste") gsap.from($(".visual svg", s), { yPercent: 18, opacity: 0, ease: "none", scrollTrigger: { trigger: s, start: "top bottom", end: "top top", scrub: true } });
+  });
+
+  // finale: cup rises, cards float in, then bob
+  const fin = gsap.timeline({ scrollTrigger: { trigger: "#taste", start: "top 70%", end: "center bottom", scrub: 1 } });
+  fin.from("#finaleCup", { yPercent: 25, scale: .85, opacity: 0, ease: "power2.out" })
+     .from(".card", { y: 60, opacity: 0, stagger: .12, ease: "power2.out" }, "<.2")
+     .from(".find-cup", { y: 30, opacity: 0 }, "<.3");
+  $$(".card").forEach((c, i) => gsap.to(c, { y: i % 2 ? 10 : -10, duration: 2.6 + i * .4, yoyo: true, repeat: -1, ease: "sine.inOut" }));
+
+  // generic reveals
+  $$(".rv").forEach(r => gsap.to(r, { opacity: 1, y: 0, duration: 1.1, ease: "power3.out", scrollTrigger: { trigger: r, start: "top 88%" } }));
+
+  // subtle mouse parallax on hero beans
+  const vis = $("#wake .visual svg");
+  addEventListener("pointermove", e => { const x = e.clientX / innerWidth - .5, y = e.clientY / innerHeight - .5; gsap.to(vis, { x: x * 18, y: y * 12, rotate: x * 2, duration: 1.2, ease: "power3.out" }); });
+
+  addEventListener("load", () => ScrollTrigger.refresh());
+  finishLoad();
+})();
+</script>
+</body>
+</html>
