@@ -414,12 +414,72 @@ form { display: grid; gap: 16px; }
 
 /* ---------- responsive ---------- */
 @media (max-width: 860px) {
-  .stage { grid-template-columns: minmax(0, 1fr); align-items: start; }
-  .lamp-col { height: min(70svh, 620px); min-height: 440px; align-self: start; }
-  #lamp { left: 42%; }
-  .card-col { justify-content: center; padding-block: 0 96px; margin-top: -20px; }
-  .card { padding: 28px 22px 22px; }
+  /* Phone: one screen. Dark = lamp centred and tall. Lit = lamp glides up-left, card docks at the bottom. */
+  .stage {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    min-height: 100svh;
+  }
+  .scene:not(.is-lit) .stage { height: 100vh; height: 100svh; overflow: hidden; }
+  .lamp-col {
+    position: absolute;
+    inset: 0;
+    height: auto;
+    min-height: 0;
+    align-self: stretch;
+    pointer-events: none;
+  }
+  #lamp {
+    pointer-events: auto;
+    top: 8svh;
+    bottom: auto;
+    height: min(86svh, 190vw);
+    left: 40%;
+    transition: top .9s cubic-bezier(.65, 0, .25, 1), height .9s cubic-bezier(.65, 0, .25, 1), left .9s cubic-bezier(.65, 0, .25, 1);
+  }
+  .is-lit #lamp {
+    top: max(10px, 1.5svh);
+    height: min(60svh, 560px);
+    left: 30%;
+  }
+  .hint { font-size: 12.5px; letter-spacing: .2em; }
+  .is-lit .hint { font-size: 17px; }
+  .card-col {
+    position: relative;
+    z-index: 2;
+    margin-top: auto;
+    justify-content: center;
+    padding-block: max(36svh, 250px) max(14px, env(safe-area-inset-bottom, 0px));
+    pointer-events: none;
+  }
+  .card { pointer-events: auto; width: 100%; max-width: 440px; padding: 22px 20px 16px; border-radius: 18px; }
+  .eyebrow { margin-bottom: 10px; }
+  h1 { font-size: clamp(27px, 8vw, 32px); margin-bottom: 16px; }
+  form { gap: 11px; }
+  .field { gap: 6px; }
+  .input { height: 46px; }
+  .input input { font-size: 16px; } /* 16px stops iOS zoom on focus */
+  .primary { height: 48px; margin-top: 2px; }
+  .ghost { height: 42px; }
+  .foot { margin-top: 12px; gap: 3px; }
+  .util {
+    top: max(14px, env(safe-area-inset-top, 0px));
+    bottom: auto;
+    right: max(16px, env(safe-area-inset-right, 0px));
+  }
   .util .keys { display: none; }
+  .sound { padding: 5px 10px; }
+  .brand { top: max(20px, env(safe-area-inset-top, 0px)); left: max(16px, env(safe-area-inset-left, 0px)); }
+}
+@media (max-width: 860px) and (max-height: 700px) {
+  .card-col { padding-top: max(30svh, 200px); }
+  .eyebrow, .foot small { display: none; }
+  h1 { font-size: 26px; margin-bottom: 12px; }
+  .input { height: 42px; }
+  .primary { height: 44px; }
+  .ghost { height: 38px; }
+  form { gap: 9px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .rings { animation: none; }
@@ -721,8 +781,11 @@ form { display: grid; gap: 16px; }
     setHint(lit ? 'Pull again for dark' : 'Pull the cord');
     announce.textContent = lit ? 'Light on. Sign-in form is ready.' : 'Light off.';
     if (lit && matchMedia('(max-width: 860px)').matches) {
-      setTimeout(() => card.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' }), 900);
+      setTimeout(() => {
+        if (card.getBoundingClientRect().bottom > innerHeight) card.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'end' });
+      }, 1000);
     }
+    if (!lit) scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
     if (lit) setTimeout(() => { if (lit && document.activeElement === handle && !matchMedia('(pointer: coarse)').matches) document.getElementById('email').focus({ preventScroll: true }); }, 1100);
   }
 
@@ -734,7 +797,12 @@ form { display: grid; gap: 16px; }
     const y = r.top + r.height * (290 / 900) - s.top;
     scene.style.setProperty('--lx', x + 'px');
     scene.style.setProperty('--ly', y + 'px');
+    // keep the bead and its touch target finger-sized when the lamp is drawn small
+    const scale = r.height / 900 || 1;
+    beadScale = Math.min(1.8, Math.max(1, 0.85 / scale));
+    hitR = Math.max(30, 24 / scale);
   }
+  let beadScale = 1, hitR = 30;
   addEventListener('resize', placeWash);
   placeWash();
 
@@ -860,7 +928,8 @@ form { display: grid; gap: 16px; }
     cordPath.setAttribute('d', d);
     const e = pts[N], p = pts[N - 1];
     const ang = Math.atan2(e.y - p.y, e.x - p.x) * 180 / Math.PI - 90;
-    bead.setAttribute('transform', `translate(${e.x.toFixed(1)} ${e.y.toFixed(1)}) rotate(${ang.toFixed(1)})`);
+    bead.setAttribute('transform', `translate(${e.x.toFixed(1)} ${e.y.toFixed(1)}) rotate(${ang.toFixed(1)}) scale(${beadScale.toFixed(2)})`);
+    hit.setAttribute('r', hitR.toFixed(1));
     hit.setAttribute('cx', e.x.toFixed(1));
     hit.setAttribute('cy', (e.y + 8).toFixed(1));
     hintG.setAttribute('transform', `translate(${(e.x + 18).toFixed(1)} ${(e.y + 10).toFixed(1)})`);
@@ -914,6 +983,7 @@ form { display: grid; gap: 16px; }
     acc += Math.min(0.05, (now - last) / 1000);
     last = now;
     while (acc >= H) { step(H); acc -= H; }
+    placeWash();
     render();
     drift(1 / 60, now / 1000);
     requestAnimationFrame(frame);
