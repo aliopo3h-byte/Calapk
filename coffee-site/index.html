@@ -12,8 +12,8 @@
 <style>
 /* Layout: a fixed WebGL stage behind the page; the camera travels down one vertical brewing line while editorial copy cross-fades on the left. */
 :root{
-  --cream:#efe5d6;
-  --cream-hi:#f7f0e5;
+  --cream:#efdcc5;
+  --cream-hi:#f6e9d8;
   --paper:#fbf6ee;
   --ink:#1b1410;
   --ink-soft:#5e4f44;
@@ -40,7 +40,10 @@ button{font:inherit;color:inherit;cursor:pointer}
 .backdrop{position:fixed;inset:0;z-index:0;background:
   radial-gradient(70% 60% at 62% 45%,var(--cream-hi) 0%,rgba(247,240,229,0) 70%),
   radial-gradient(120% 80% at 50% 120%,#e2d3bd 0%,rgba(226,211,189,0) 60%),var(--cream)}
-#gl{position:fixed;inset:0;width:100%;height:100%;z-index:1;pointer-events:none;transition:opacity .6s}
+.warm{position:fixed;inset:0;z-index:0;opacity:0;pointer-events:none;background:radial-gradient(90% 70% at 55% 100%,#c8955f 0%,#dcb88f 35%,rgba(239,220,197,0) 75%)}
+.stage{position:fixed;z-index:1;top:50%;left:var(--sx,62%);width:min(62vw,94vh);aspect-ratio:1;transform:translate(-50%,-50%);pointer-events:none;transition:opacity .6s}
+.shot{position:absolute;inset:0;opacity:0;will-change:transform,opacity,filter}
+.shot img{width:100%;height:100%;object-fit:cover;-webkit-mask-image:radial-gradient(closest-side,#000 64%,transparent 100%);mask-image:radial-gradient(closest-side,#000 64%,transparent 100%)}
 .grain{position:fixed;inset:0;pointer-events:none;z-index:70;opacity:.06;mix-blend-mode:multiply;
   background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>")}
 
@@ -167,6 +170,7 @@ button{font:inherit;color:inherit;cursor:pointer}
   .ritual div:nth-child(3){padding-left:0;border-left:0}
 }
 @media (max-width:820px){
+  .stage{top:auto;bottom:-6vh;left:50%!important;transform:translateX(-50%);width:min(112vw,60vh)}
   .panel,.panel--right{top:96px;transform:none;width:auto;left:var(--gl);right:var(--gr)}
   .panel--right{display:none}
   .display{font-size:clamp(46px,13vw,80px);margin:10px 0 12px}
@@ -184,13 +188,17 @@ button{font:inherit;color:inherit;cursor:pointer}
 }
 @media (prefers-reduced-motion:reduce){.marquee__track,.scroll-hint i::after{animation:none}}
 </style>
-<script type="importmap">
-{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
-</script>
 </head>
 <body>
 <div class="backdrop" aria-hidden="true"></div>
-<canvas id="gl" aria-hidden="true"></canvas>
+<div class="warm" id="warm" aria-hidden="true"></div>
+<div class="stage" id="stage" aria-hidden="true">
+  <div class="shot"><img src="img/beans.png" alt=""></div>
+  <div class="shot"><img src="img/espresso.png" alt=""></div>
+  <div class="shot"><img src="img/bloom.png" alt=""></div>
+  <div class="shot"><img src="img/carafe.png" alt=""></div>
+  <div class="shot"><img src="img/spiral.png" alt=""></div>
+</div>
 <div class="grain" aria-hidden="true"></div>
 
 <div class="loader" id="loader" role="status" aria-label="Loading">
@@ -323,10 +331,8 @@ button{font:inherit;color:inherit;cursor:pointer}
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/lenis@1.1.13/dist/lenis.min.js"></script>
-<script type="module">
-import * as THREE from "three";
-import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-
+<script>
+(() => {
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -390,367 +396,62 @@ const updateHud = p => {
   $("#brewTimer").textContent = `${sec / 60 | 0}:${String(sec % 60).padStart(2, "0")}`;
 };
 
-/* ===================== 3D ===================== */
-const canvas = $("#gl");
-let renderer;
-try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: "high-performance" }); }
-catch (e) { canvas.remove(); }
-
+/* ===================== image stage ===================== */
+const stage = $("#stage"), warm = $("#warm");
+const shots = $$(".shot", stage).map(el => ({ el }));
+// [fade-in start, fade-in end, fade-out start, fade-out end] in story progress
+const WIN = [[-1, -1, .09, .15], [.09, .15, .21, .27], [.21, .27, .45, .51], [.45, .51, .69, .75], [.69, .75, 9, 9]];
 const loadBar = $("#loadBar"), loadCount = $("#loadCount");
 const setLoad = v => { loadBar.style.width = v + "%"; loadCount.textContent = String(Math.round(v)).padStart(3, "0"); };
-const finishLoad = () => { setLoad(100); setTimeout(() => { $("#loader").classList.add("done"); intro(); }, 250); };
 const intro = () => {
   const p0 = panels[0];
   p0.lines.forEach((s, i) => s.animate([{ transform: "translateY(115%)" }, { transform: "translateY(0)" }], { duration: 1300, delay: 120 + i * 90, easing: "cubic-bezier(.16,1,.3,1)", fill: "backwards" }));
   p0.rest.forEach((s, i) => s.animate([{ opacity: 0, transform: "translateY(24px)" }, { opacity: 1, transform: "none" }], { duration: 1000, delay: 400 + i * 80, easing: "cubic-bezier(.2,.7,.2,1)", fill: "backwards" }));
+  shots[0].el.animate([{ opacity: 0, transform: "translateY(6%) scale(.9)", filter: "blur(10px)" }, { opacity: 1, transform: "none", filter: "blur(0)" }], { duration: 1600, delay: 150, easing: "cubic-bezier(.16,1,.3,1)", fill: "backwards" });
 };
-
-if (!renderer) { updateHud(0); finishLoad(); }
-else {
-setLoad(20);
-const DPR = Math.min(devicePixelRatio || 1, 1.75);
-renderer.setPixelRatio(DPR);
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
-renderer.localClippingEnabled = true;
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-
-const scene = new THREE.Scene();
-const pmrem = new THREE.PMREMGenerator(renderer);
-scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), .04).texture;
-const camera = new THREE.PerspectiveCamera(28, 1, .1, 100);
-
-const key = new THREE.DirectionalLight(0xfff1e0, 2.2);
-key.position.set(-4, 6, 6);
-scene.add(key, key.target);
-const rim = new THREE.DirectionalLight(0xffd9b0, 1.4); rim.position.set(5, 2, -4); scene.add(rim);
-scene.add(new THREE.HemisphereLight(0xfff6ea, 0x8a6a50, .35));
-setLoad(35);
-
-/* ---------- procedural textures ---------- */
-const canvasTex = (w, h, draw, srgb = true) => { const c = document.createElement("canvas"); c.width = w; c.height = h; draw(c.getContext("2d"), w, h); const t = new THREE.CanvasTexture(c); if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };
-const noiseTex = (size, amt, base = 128, blur = 0) => canvasTex(size, size, (g, w, h) => {
-  const img = g.createImageData(w, h);
-  for (let i = 0; i < img.data.length; i += 4) { const v = base + (Math.random() - .5) * amt; img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255; }
-  g.putImageData(img, 0, 0);
-  if (blur) { g.filter = `blur(${blur}px)`; g.drawImage(g.canvas, 0, 0); }
-}, false);
-const fineNoise = noiseTex(256, 90, 128, .6); fineNoise.wrapS = fineNoise.wrapT = THREE.RepeatWrapping;
-const coarseNoise = noiseTex(256, 160, 128, 2.5); coarseNoise.wrapS = coarseNoise.wrapT = THREE.RepeatWrapping;
-const speckle = canvasTex(1024, 512, (g, w, h) => {
-  g.fillStyle = "#e9dece"; g.fillRect(0, 0, w, h);
-  for (let i = 0; i < 5200; i++) { const r = Math.random() * 1.8 + .3; g.fillStyle = `rgba(${70 + Math.random() * 60 | 0},${50 + Math.random() * 40 | 0},${35 + Math.random() * 30 | 0},${.25 + Math.random() * .5})`; g.beginPath(); g.arc(Math.random() * w, Math.random() * h, r, 0, 7); g.fill(); }
-  const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, "rgba(255,255,255,0)"); gr.addColorStop(1, "rgba(120,96,74,.18)"); g.fillStyle = gr; g.fillRect(0, 0, w, h);
-});
-speckle.wrapS = THREE.RepeatWrapping;
-const blobTex = canvasTex(256, 256, (g, w) => { const r = g.createRadialGradient(w / 2, w / 2, 0, w / 2, w / 2, w / 2); r.addColorStop(0, "rgba(58,33,22,.55)"); r.addColorStop(.45, "rgba(58,33,22,.22)"); r.addColorStop(1, "rgba(58,33,22,0)"); g.fillStyle = r; g.fillRect(0, 0, w, w); });
-const latteTex = canvasTex(1024, 1024, (g, w) => {
-  const c = w / 2;
-  let r = g.createRadialGradient(c, c, 0, c, c, c);
-  r.addColorStop(0, "#c88c55"); r.addColorStop(.55, "#a7652f"); r.addColorStop(.85, "#7d4119"); r.addColorStop(1, "#4d240c");
-  g.fillStyle = r; g.fillRect(0, 0, w, w);
-  for (let i = 0; i < 2200; i++) { g.fillStyle = `rgba(${Math.random() < .5 ? "255,225,180" : "90,45,15"},${Math.random() * .12})`; g.beginPath(); g.arc(Math.random() * w, Math.random() * w, Math.random() * 6, 0, 7); g.fill(); }
-  g.save(); g.translate(c, c * 1.04); g.filter = "blur(3px)";
-  g.fillStyle = "#fbf3e7";
-  // rosetta: stacked leaves
-  for (let i = 0; i < 7; i++) {
-    const y = 250 - i * 62, wd = 300 - i * 22 - (i > 4 ? (i - 4) * 30 : 0), th = 46;
-    g.beginPath(); g.moveTo(-wd, y); g.bezierCurveTo(-wd * .7, y - th * 2.2, wd * .7, y - th * 2.2, wd, y); g.bezierCurveTo(wd * .55, y - th * 1.1, -wd * .55, y - th * 1.1, -wd, y); g.fill();
-  }
-  g.beginPath(); g.moveTo(0, -150); g.bezierCurveTo(-120, -260, -150, -360, -50, -370); g.bezierCurveTo(-10, -372, 0, -340, 0, -330); g.bezierCurveTo(0, -340, 10, -372, 50, -370); g.bezierCurveTo(150, -360, 120, -260, 0, -150); g.fill();
-  g.strokeStyle = "#fbf3e7"; g.lineWidth = 12; g.lineCap = "round"; g.beginPath(); g.moveTo(0, -300); g.lineTo(0, 300); g.stroke();
-  g.restore();
-  g.filter = "none";
-  r = g.createRadialGradient(c, c, c * .82, c, c, c); r.addColorStop(0, "rgba(60,25,8,0)"); r.addColorStop(1, "rgba(60,25,8,.55)"); g.fillStyle = r; g.fillRect(0, 0, w, w);
-});
-setLoad(50);
-
-/* ---------- materials ---------- */
-const M = {
-  bean: new THREE.MeshPhysicalMaterial({ color: 0x2e1408, roughness: .5, roughnessMap: coarseNoise, clearcoat: .55, clearcoatRoughness: .4, bumpMap: coarseNoise, bumpScale: 1.4, sheen: .5, sheenRoughness: .6, sheenColor: new THREE.Color(0x7a3f1e) }),
-  chrome: new THREE.MeshPhysicalMaterial({ color: 0xe8e6e2, metalness: 1, roughness: .12 }),
-  brushed: new THREE.MeshPhysicalMaterial({ color: 0xd8d4cc, metalness: 1, roughness: .32, bumpMap: fineNoise, bumpScale: .3 }),
-  brass: new THREE.MeshPhysicalMaterial({ color: 0xd9a95a, metalness: 1, roughness: .22 }),
-  rubber: new THREE.MeshPhysicalMaterial({ color: 0x18120e, roughness: .55, clearcoat: .3 }),
-  clay: new THREE.MeshPhysicalMaterial({ color: 0x8e3f22, roughness: .55, clearcoat: .4, clearcoatRoughness: .35, bumpMap: fineNoise, bumpScale: .5 }),
-  glass: new THREE.MeshPhysicalMaterial({ color: 0xffffff, metalness: 0, roughness: .02, transparent: true, opacity: .1, side: THREE.DoubleSide, depthWrite: false, envMapIntensity: 1.7, clearcoat: 1, clearcoatRoughness: 0, specularIntensity: 1 }),
-  ceramic: new THREE.MeshPhysicalMaterial({ color: 0xf0e2cf, map: speckle, roughness: .45, clearcoat: .55, clearcoatRoughness: .2 }),
-  grounds: new THREE.MeshStandardMaterial({ color: 0x3b1d0e, roughness: .85 }),
-  bed: new THREE.MeshPhysicalMaterial({ color: 0x2c1408, roughness: .75, bumpMap: coarseNoise, bumpScale: 2 }),
-  latte: new THREE.MeshPhysicalMaterial({ map: latteTex, roughness: .55, clearcoat: .25 }),
-  blob: new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false, toneMapped: false })
-};
-const liquid = (color, rough = .08) => {
-  const m = new THREE.MeshPhysicalMaterial({ color, roughness: rough, clearcoat: 1, clearcoatRoughness: .05, specularIntensity: 1 });
-  m.userData.uTime = { value: 0 };
-  m.onBeforeCompile = sh => {
-    sh.uniforms.uTime = m.userData.uTime;
-    sh.vertexShader = "uniform float uTime;\n" + sh.vertexShader.replace("#include <begin_vertex>",
-      "#include <begin_vertex>\nfloat w = sin(position.y*9.0 - uTime*9.0)*0.5 + sin(position.y*23.0 - uTime*14.0)*0.25;\ntransformed += normal * w * 0.012;");
-  };
-  return m;
-};
-M.coffee = liquid(0x2a1307);
-M.coffeeLight = liquid(0x5c2a10, .12);
-M.milk = liquid(0xf2e4cf, .22);
-M.brew = new THREE.MeshPhysicalMaterial({ color: 0x3a1406, roughness: .1, clearcoat: 1, sheen: .6, sheenColor: new THREE.Color(0x8a3c12), side: THREE.DoubleSide });
-M.brewTop = new THREE.MeshPhysicalMaterial({ color: 0x4a1e0a, roughness: .05, clearcoat: 1, bumpMap: fineNoise, bumpScale: .15 });
-
-const blob = (r, y, x = 0, z = 0) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(r * 2, r * 2), M.blob); m.rotation.x = -Math.PI / 2; m.position.set(x, y, z); m.renderOrder = -1; scene.add(m); return m; };
-const lathe = (pts, mat, seg = 96) => new THREE.Mesh(new THREE.LatheGeometry(pts.map(p => new THREE.Vector2(p[0], p[1])), seg), mat);
-const shadowy = o => { o.traverse(m => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } }); return o; };
-
-/* ---------- 1. coffee beans ---------- */
-const beanGeo = (() => {
-  const g = new THREE.SphereGeometry(1, 128, 96), p = g.attributes.position, v = new THREE.Vector3();
-  for (let i = 0; i < p.count; i++) {
-    v.fromBufferAttribute(p, i);
-    let { x, y, z } = v;
-    x *= .62; y *= .86; z *= .5;
-    if (z > 0) {
-      z *= .38;
-      const cx = .085 * Math.sin(y * 3.4), d = x - cx, edge = Math.sqrt(clamp(1 - (y / .86) ** 2));
-      z -= .17 * Math.exp(-(d * d) / .0035) * edge;
-      z += .03 * Math.exp(-((Math.abs(d) - .07) ** 2) / .002) * edge;
-    }
-    x *= 1 + .03 * Math.sin(y * 7 + z * 5); p.setXYZ(i, x, y, z);
-  }
-  g.computeVertexNormals(); return g;
-})();
-const beans = new THREE.Group(); scene.add(beans);
-const beanL = new THREE.Mesh(beanGeo, M.bean), beanR = new THREE.Mesh(beanGeo, M.bean);
-beanL.scale.setScalar(1.05); beanR.scale.setScalar(1.05);
-beans.add(shadowy(beanL), shadowy(beanR));
-const beanShadow = blob(1.9, -1.45);
-
-/* grounds burst (instanced) */
-const GN = 420;
-const grounds = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), M.grounds, GN);
-const gData = Array.from({ length: GN }, () => {
-  const dir = new THREE.Vector3(.55 + Math.random() * .9, .7 + Math.random() * 1.1, (Math.random() - .5) * 1.4).normalize();
-  return { dir, sp: .4 + Math.random() * 1.8, s: .012 + Math.random() ** 2 * .05, rot: new THREE.Euler(Math.random() * 6, Math.random() * 6, Math.random() * 6), ph: Math.random() * 6.28, sx: .7 + Math.random() * .6 };
-});
-scene.add(grounds);
-const dummy = new THREE.Object3D();
-const setGrounds = (p, t) => {
-  const burst = .35 + p * 3.2, fade = 1 - seg(p, .55, 1);
-  gData.forEach((d, i) => {
-    const dist = (.25 + d.sp * burst * .9);
-    dummy.position.set(.25 + d.dir.x * dist + Math.sin(t * .6 + d.ph) * .03, .55 + d.dir.y * dist - p * p * 2.4 * d.sp + Math.cos(t * .5 + d.ph) * .03, d.dir.z * dist);
-    dummy.rotation.set(d.rot.x + t * .3, d.rot.y + t * .2, d.rot.z);
-    dummy.scale.set(d.s * d.sx * fade, d.s * fade, d.s * 1.2 * fade);
-    dummy.updateMatrix(); grounds.setMatrixAt(i, dummy.matrix);
-  });
-  grounds.instanceMatrix.needsUpdate = true;
-};
-
-/* ---------- espresso portafilter (origin = spout tip) ---------- */
-const porta = new THREE.Group(); scene.add(porta);
-{
-  const head = lathe([[0, 2.4], [.78, 2.4], [.78, 1.05], [.72, .98], [0, .98]], M.brushed, 96); porta.add(head);
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(.66, .07, 24, 96), M.brass); ring.rotation.x = Math.PI / 2; ring.position.y = .92; porta.add(ring);
-  const basket = lathe([[0, .9], [.62, .9], [.62, .55], [.5, .38], [.18, .3], [0, .3]], M.chrome); porta.add(basket);
-  const spout = lathe([[0, .32], [.16, .32], [.1, .1], [.075, 0], [0, 0]], M.chrome, 48); porta.add(spout);
-  const arm = new THREE.Mesh(new THREE.CylinderGeometry(.09, .11, .9, 32), M.chrome); arm.rotation.z = Math.PI / 2; arm.position.set(.95, .62, 0); porta.add(arm);
-  const grip = new THREE.Mesh(new THREE.CapsuleGeometry(.14, 1.3, 12, 32), M.rubber); grip.rotation.z = Math.PI / 2 - .12; grip.position.set(2.05, .7, 0); porta.add(grip);
-  const ferrule = new THREE.Mesh(new THREE.CylinderGeometry(.15, .15, .14, 32), M.brass); ferrule.rotation.z = Math.PI / 2 - .12; ferrule.position.set(1.36, .63, 0); porta.add(ferrule);
-  shadowy(porta);
-}
-porta.position.set(0, 7, 0); porta.rotation.y = -.5;
-
-/* ---------- liquid streams with draw-range reveal ---------- */
-const makeStream = (pts, r, mat, segs = 400) => {
-  const curve = new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(...p)));
-  const geo = new THREE.TubeGeometry(curve, segs, r, 20, false);
-  // taper the start of the stream
-  const pos = geo.attributes.position, n = 21;
-  for (let i = 0; i <= segs; i++) {
-    const t = i / segs, c = curve.getPointAt(t), k = .55 + .45 * Math.min(1, t * 6);
-    for (let j = 0; j < n; j++) { const id = i * n + j; pos.setXYZ(id, c.x + (pos.getX(id) - c.x) * k, pos.getY(id), c.z + (pos.getZ(id) - c.z) * k); }
-  }
-  geo.computeVertexNormals();
-  const m = new THREE.Mesh(geo, mat); m.userData.total = geo.index.count; m.userData.segs = segs; geo.setDrawRange(0, 0); scene.add(m); return m;
-};
-const reveal = (m, head, tail = 0) => { const per = m.userData.total / m.userData.segs, a = Math.floor(tail * m.userData.segs) * per, b = Math.floor(head * m.userData.segs) * per; m.geometry.setDrawRange(a, Math.max(0, b - a)); m.visible = b > a; };
-const streamA = makeStream([[0, 2.05, 0], [0, 1, .01], [.01, -1, 0], [-.01, -3, 0], [0, -5.35, 0]], .06, M.coffee);
-
-/* ---------- 2. pour-over dripper (origin at its base) ---------- */
-const DY = -6.3;
-const dripper = new THREE.Group(); dripper.position.y = DY; scene.add(dripper);
-const dProfile = [[.2, .12], [.3, .14], [.86, 1.15], [.95, 1.2], [.96, 1.26], [.88, 1.27], [.8, 1.18], [.22, .22], [.12, .2]];
-{
-  const g = new THREE.LatheGeometry(dProfile.map(p => new THREE.Vector2(...p)), 160), pos = g.attributes.position, v = new THREE.Vector3();
-  for (let i = 0; i < pos.count; i++) {
-    v.fromBufferAttribute(pos, i);
-    const a = Math.atan2(v.z, v.x), j = i % dProfile.length;
-    if (j >= 1 && j <= 2) { const k = 1 + .045 * Math.pow(Math.abs(Math.cos(a * 9)), 6); pos.setX(i, v.x * k); pos.setZ(i, v.z * k); }
-    if (j >= 6) { const k = 1 - .03 * Math.pow(Math.abs(Math.sin(a * 12)), 8); pos.setX(i, v.x * k); pos.setZ(i, v.z * k); }
-  }
-  g.computeVertexNormals();
-  const cone = new THREE.Mesh(g, M.clay); dripper.add(cone);
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(.34, .38, .14, 64), M.clay); neck.position.y = .06; dripper.add(neck);
-  const plate = new THREE.Mesh(new THREE.CylinderGeometry(.86, .9, .07, 96), M.clay); plate.position.y = -.02; dripper.add(plate);
-  const handle = new THREE.Mesh(new THREE.TorusGeometry(.3, .08, 24, 64, Math.PI * 1.15), M.clay); handle.position.set(.9, .72, 0); handle.rotation.z = -Math.PI * .57; dripper.add(handle);
-  shadowy(dripper);
-}
-const bedGeo = new THREE.SphereGeometry(1, 96, 32, 0, Math.PI * 2, 0, Math.PI / 2);
-const bed = new THREE.Mesh(bedGeo, M.bed); bed.position.y = 1.0; bed.scale.set(.66, .04, .66); dripper.add(bed);
-
-/* splash droplets */
-const SN = 90;
-const splash = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 16, 12), M.coffeeLight, SN);
-const sData = Array.from({ length: SN }, () => { const a = Math.random() * Math.PI * 2, out = .8 + Math.random() * 1.8; return { vx: Math.cos(a) * out, vz: Math.sin(a) * out * .6, vy: 2.2 + Math.random() * 2.8, s: .012 + Math.random() ** 3 * .045, d: Math.random() * .35 }; });
-scene.add(splash);
-const crownMat = liquid(0x4a200b, .1); crownMat.side = THREE.DoubleSide;
-const crown = new THREE.Mesh(new THREE.CylinderGeometry(1, .7, 1, 96, 1, true), crownMat);
-{ const p = crown.geometry.attributes.position; for (let i = 0; i < p.count; i++) if (p.getY(i) > 0) { const a = Math.atan2(p.getZ(i), p.getX(i)); p.setY(i, .5 + .22 * Math.pow(Math.abs(Math.sin(a * 11)), 2)); } crown.geometry.computeVertexNormals(); }
-scene.add(crown);
-const setSplash = p => {
-  const BY = DY + 1.05;
-  const t = p * 1.15;
-  sData.forEach((d, i) => {
-    const tt = clamp(t - d.d);
-    const s = tt > 0 && tt < 1 ? d.s * (1 - tt * .6) : 0;
-    dummy.position.set(d.vx * tt * .9, BY + d.vy * tt - 5.5 * tt * tt, d.vz * tt * .9 + .2);
-    dummy.scale.set(s, s * (1 + tt * .8), s); dummy.rotation.set(0, 0, 0); dummy.updateMatrix(); splash.setMatrixAt(i, dummy.matrix);
-  });
-  splash.instanceMatrix.needsUpdate = true;
-  const c = Math.sin(clamp(p * 1.6) * Math.PI);
-  crown.visible = c > .02; crown.position.set(0, BY + .1 * c, 0); crown.scale.set(.3 + .32 * clamp(p * 1.6), .38 * c + .001, .3 + .32 * clamp(p * 1.6));
-};
-
-/* ---------- 3. glass server ---------- */
-const CY = DY - .02;
-const sProfile = [[0, -2.4], [.82, -2.4], [.98, -2.3], [1.12, -2.0], [1.16, -1.6], [1.08, -1.15], [.82, -.72], [.6, -.42], [.56, -.1], [.6, 0]];
-const server = new THREE.Group(); server.position.y = CY; scene.add(server);
-const glassBody = lathe(sProfile, M.glass, 128); server.add(glassBody);
-const sHandle = new THREE.Mesh(new THREE.TorusGeometry(.42, .06, 20, 64, Math.PI * 1.1), M.glass); sHandle.position.set(1.12, -1.25, 0); sHandle.rotation.z = -Math.PI * .55; server.add(sHandle);
-const radiusAt = y => { for (let i = 0; i < sProfile.length - 1; i++) { const [r0, y0] = sProfile[i], [r1, y1] = sProfile[i + 1]; if (y >= y0 && y <= y1) return lerp(r0, r1, (y - y0) / (y1 - y0)); } return .5; };
-const fillPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 0);
-M.brew.clippingPlanes = [fillPlane];
-const brewBody = lathe(sProfile.slice(0, 8).map(([r, y]) => [Math.max(0, r - .04), y + .03]), M.brew, 128); server.add(brewBody);
-const brewTop = new THREE.Mesh(new THREE.CircleGeometry(1, 96), M.brewTop); brewTop.rotation.x = -Math.PI / 2; server.add(brewTop);
-blob(1.9, CY - 2.41);
-const streamB = makeStream([[0, DY + .02, 0], [0, DY - 1, .005], [0, CY - 2.36, 0]], .022, M.coffeeLight, 200);
-const setFill = f => {
-  const y = lerp(-2.36, -.95, f);
-  fillPlane.constant = CY + y;
-  brewTop.position.y = y; brewTop.scale.setScalar(Math.max(.01, radiusAt(y) - .045)); brewTop.visible = f > .01; brewBody.visible = f > .01;
-};
-
-/* ---------- 4. spiral pour + latte cup ---------- */
-const SY = -11.2, CUPY = -15.6;
-const helix = (phase, r0) => { const pts = []; for (let i = 0; i <= 120; i++) { const t = i / 120, a = t * Math.PI * 4.6 + phase, r = r0 * (1 - t * .82) + .03; pts.push([Math.cos(a) * r, SY - t * (SY - CUPY - .45), Math.sin(a) * r]); } return pts; };
-const ribbonC = makeStream(helix(0, 1.05), .13, M.coffeeLight, 500);
-const ribbonM = makeStream(helix(Math.PI, 1.05), .11, M.milk, 500);
-const cup = new THREE.Group(); cup.position.y = CUPY; scene.add(cup);
-{
-  const body = lathe([[0, -.62], [.52, -.62], [.6, -.58], [.78, -.25], [.88, .2], [.92, .5], [.94, .58], [.9, .6], [.86, .52], [.82, .2], [.7, -.3], [.5, -.5], [0, -.52]], M.ceramic, 128);
-  cup.add(body);
-  const foot = new THREE.Mesh(new THREE.TorusGeometry(.5, .04, 16, 64), M.ceramic); foot.rotation.x = Math.PI / 2; foot.position.y = -.6; cup.add(foot);
-  const handle = new THREE.Mesh(new THREE.TorusGeometry(.3, .085, 24, 64, Math.PI * 1.25), M.ceramic); handle.position.set(.92, .12, 0); handle.rotation.z = -Math.PI * .62; cup.add(handle);
-  const latte = new THREE.Mesh(new THREE.CircleGeometry(.86, 96), M.latte); latte.rotation.x = -Math.PI / 2; latte.rotation.z = Math.PI / 2; latte.position.y = .47; cup.add(latte);
-  shadowy(cup);
-}
-blob(1.7, CUPY - .63);
-cup.rotation.y = -.5;
-setLoad(80);
-
-/* ---------- camera path ---------- */
-const KEYS = [
-  { p: 0,   y: .15,  z: 9.5,  x: 1 },
-  { p: .12, y: 1.15, z: 10.8, x: 1 },
-  { p: .18, y: -1.2, z: 10,   x: 1 },
-  { p: .26, y: -5.0, z: 8.6,  x: 1 },
-  { p: .44, y: -5.1, z: 8.8,  x: 1 },
-  { p: .53, y: -6.9, z: 12.2, x: 1 },
-  { p: .69, y: -7.0, z: 12.2, x: 1 },
-  { p: .77, y: -11.9,z: 12.2, x: 1 },
-  { p: .88, y: -13.7,z: 11.2, x: 1 },
-  { p: 1,   y: -13.5,z: 10.8, x: 0, tilt: 1.75 }
-];
-const camAt = p => { let i = 0; while (i < KEYS.length - 2 && p > KEYS[i + 1].p) i++; const a = KEYS[i], b = KEYS[i + 1], t = ease(seg(p, a.p, b.p)); return { y: lerp(a.y, b.y, t), z: lerp(a.z, b.z, t), x: lerp(a.x, b.x, t), tilt: lerp(a.tilt || 0, b.tilt || 0, t) }; };
-
-let W = 0, H = 0, aspect = 1, mobile = false;
-const resize = () => { W = innerWidth; H = innerHeight; aspect = W / H; mobile = W < 820; renderer.setSize(W, H, false); camera.aspect = aspect; camera.updateProjectionMatrix(); };
-addEventListener("resize", resize); resize();
+const imgs = $$("img", stage); let loaded = 0;
+const done = () => { setLoad(100); setTimeout(() => { $("#loader").classList.add("done"); intro(); }, 250); };
+imgs.forEach(im => { const ok = () => { loaded++; setLoad(loaded / imgs.length * 95); if (loaded === imgs.length) done(); }; im.complete ? ok() : (im.onload = im.onerror = ok); });
 
 const mouse = { x: 0, y: 0, sx: 0, sy: 0 };
-addEventListener("pointermove", e => { mouse.x = e.clientX / W - .5; mouse.y = e.clientY / H - .5; });
-
+addEventListener("pointermove", e => { mouse.x = e.clientX / innerWidth - .5; mouse.y = e.clientY / innerHeight - .5; });
 let progress = 0, smooth = 0;
 const readScroll = () => { progress = clamp((scrollY - story.offsetTop) / storyLen()); };
 addEventListener("scroll", () => { readScroll(); hdr.classList.toggle("scrolled", scrollY > 40); }, { passive: true });
 
-const clock = new THREE.Clock();
 const frame = now => {
   if (lenis) lenis.raf(now);
-  const t = clock.getElapsedTime();
-  smooth += (progress - smooth) * (reduce ? 1 : .085);
-  const p = smooth;
+  smooth += (progress - smooth) * (reduce ? 1 : .09);
+  const p = smooth, t = now / 1000;
   updateHud(p);
-
-  // camera
-  const c = camAt(p);
-  const fit = mobile ? clamp(.92 / aspect, 1, 2.1) : 1, my = mobile ? 2.4 : 0;
-  const shiftX = mobile ? 0 : -1.55 * c.x * Math.min(1.25, aspect / 1.6);
-  mouse.sx += (mouse.x - mouse.sx) * .05; mouse.sy += (mouse.y - mouse.sy) * .05;
-  camera.position.set(shiftX + mouse.sx * .35, c.y + my - mouse.sy * .2, c.z * fit);
-  camera.lookAt(shiftX * .9, c.y - c.tilt + my, 0);
-  key.target.position.set(0, c.y, 0); key.position.set(-4, c.y + 6, 6);
-
-  // beans
-  const sep = ease(seg(p, .02, .14)), bob = Math.sin(t * 1.1) * .06;
-  beanL.position.set(lerp(-.36, -1.15, sep), lerp(0, -.3, sep) + bob, lerp(.05, .2, sep));
-  beanL.rotation.set(lerp(-.15, .1, sep) + Math.sin(t * .7) * .04, lerp(.25, -.55, sep), lerp(.32, .75, sep));
-  beanR.position.set(lerp(.42, 1.2, sep), lerp(.06, -.38, sep) - bob, lerp(-.05, .1, sep));
-  beanR.rotation.set(lerp(.1, -.1, sep), lerp(-.35, .6, sep) + Math.sin(t * .6) * .05, lerp(-.28, -.7, sep));
-  beanShadow.scale.setScalar(1 + sep * .5);
-  setGrounds(seg(p, 0, .22), t);
-  grounds.visible = p < .24;
-
-  // portafilter descends, then lifts away
-  porta.position.y = lerp(7.5, 2.05, ease(seg(p, .03, .12))) + ease(seg(p, .46, .56)) * 6;
-  porta.rotation.y = lerp(-.9, -.35, ease(seg(p, .03, .12)));
-  reveal(streamA, ease(seg(p, .1, .27)), seg(p, .4, .47));
-
-  // bloom
-  const bl = seg(p, .27, .43);
-  bed.scale.set(.66 + bl * .05, .04 + Math.sin(bl * Math.PI) * .2 + bl * .06, .66 + bl * .05);
-  bed.position.y = 1.0 + bl * .05;
-  setSplash(seg(p, .265, .42));
-  splash.visible = p > .26 && p < .44;
-
-  // drip into server and fill
-  reveal(streamB, ease(seg(p, .5, .56)), seg(p, .67, .72));
-  setFill(ease(seg(p, .52, .7)));
-
-  // spiral
-  reveal(ribbonC, ease(seg(p, .665, .85)), ease(seg(p, .88, .97)));
-  reveal(ribbonM, ease(seg(p, .68, .855)), ease(seg(p, .885, .975)));
-  cup.rotation.y = -.5 + Math.sin(t * .4) * .06 + seg(p, .85, 1) * .35;
-
-  // only draw what belongs to the current step (keeps narrow screens clean and saves GPU)
-  beans.visible = beanShadow.visible = p < .3;
-  porta.visible = p < .58;
-  dripper.visible = p > .1 && p < .8;
-  server.visible = p > .14 && p < .82;
-  cup.visible = p > .6;
-  for (const m of [M.coffee, M.coffeeLight, M.milk, crownMat]) m.userData.uTime.value = t;
+  mouse.sx += (mouse.x - mouse.sx) * .06; mouse.sy += (mouse.y - mouse.sy) * .06;
+  shots.forEach((s, i) => {
+    const [a, b, c, d] = WIN[i];
+    const vin = a < 0 ? 1 : ease(seg(p, a, b)), vout = 1 - ease(seg(p, c, d)), v = Math.min(vin, vout);
+    if (v <= 0.001) { s.el.style.opacity = 0; return; }
+    const entering = vin < 1, k = 1 - v;
+    const hold = seg(p, b < 0 ? 0 : b, c > 1 ? 1 : c);              // slow push-in while the step is on screen
+    let y = entering ? k * 12 : -k * 12, sc = (entering ? 1 - k * .1 : 1 + k * .14) * (1 + hold * .05);
+    let ox = "50%", oy = "50%";
+    if (i === 4) { const z = ease(seg(p, .86, 1)); sc *= 1 - z * .1; y += z * 3; }
+    const bob = reduce ? 0 : Math.sin(t * 1.1 + i) * .6;
+    s.el.style.opacity = v;
+    s.el.style.transformOrigin = `${ox} ${oy}`;
+    s.el.style.transform = `translate(${mouse.sx * -14}px, calc(${y + bob}% + ${mouse.sy * -10}px)) scale(${sc})`;
+    s.el.style.filter = k > .01 ? `blur(${k * 10}px)` : "none";
+  });
+  if (innerWidth > 820) stage.style.setProperty("--sx", `${lerp(62, 50, ease(seg(p, .86, .97)))}%`);
+  warm.style.opacity = ease(seg(p, .68, .78));
   const past = scrollY - (story.offsetTop + storyLen());
-  canvas.style.opacity = past > innerHeight * .6 ? 0 : 1;
+  stage.style.opacity = warm.style.opacity === "0" && past > 0 ? 0 : (past > innerHeight * .5 ? 0 : 1);
+  warm.style.visibility = stage.style.opacity === "0" ? "hidden" : "visible";
   hud.style.opacity = past > 40 ? 0 : 1;
   rail.style.opacity = hud.style.opacity;
-
-  renderer.render(scene, camera);
   requestAnimationFrame(frame);
 };
 readScroll(); smooth = progress;
-setLoad(95);
-requestAnimationFrame(now => { frame(now); finishLoad(); });
-}
+requestAnimationFrame(frame);
+})();
 </script>
 </body>
 </html>
