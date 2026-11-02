@@ -1,0 +1,1251 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>دفتر الحسابات</title>
+<style>
+  /* Ledger for subscriber accounts: teal for money, amber for what is owed, red for what is late. */
+  :root {
+    --bg: #F4F6F3; --surface: #FFFFFF; --ink: #14201F; --muted: #5B6B69; --line: #DCE4E0;
+    --brand: #0F766E; --brand-ink: #FFFFFF; --brand-soft: #DDF3EF; --brand-deep: #0B5C56; --bar: #0F766E; --bar-ink: #FFFFFF;
+    --good: #15803D; --good-soft: #DCF3E4;
+    --warn: #B45309; --warn-soft: #FEF3C7;
+    --bad: #B42318; --bad-soft: #FDE8E6;
+    --info: #1D4ED8; --info-soft: #DBEAFE;
+    --shadow: 0 1px 2px rgba(20,32,31,.06), 0 8px 22px rgba(20,32,31,.07);
+    --font: "Noto Sans Arabic", "IBM Plex Sans Arabic", "Segoe UI", Tahoma, system-ui, sans-serif;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0F1716; --surface: #17211F; --ink: #E8F0EE; --muted: #9BB0AC; --line: #26352F;
+      --brand: #2DD4BF; --brand-ink: #062521; --brand-soft: #123530; --brand-deep: #0B3B37; --bar: #0B3B37; --bar-ink: #E8F0EE;
+      --good: #4ADE80; --good-soft: #12301F; --warn: #FBBF24; --warn-soft: #33270B;
+      --bad: #F87171; --bad-soft: #3A1B1B; --info: #7DA7FF; --info-soft: #172A4F;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 22px rgba(0,0,0,.35);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0F1716; --surface: #17211F; --ink: #E8F0EE; --muted: #9BB0AC; --line: #26352F;
+    --brand: #2DD4BF; --brand-ink: #062521; --brand-soft: #123530; --brand-deep: #0B3B37; --bar: #0B3B37; --bar-ink: #E8F0EE;
+    --good: #4ADE80; --good-soft: #12301F; --warn: #FBBF24; --warn-soft: #33270B;
+    --bad: #F87171; --bad-soft: #3A1B1B; --info: #7DA7FF; --info-soft: #172A4F;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 22px rgba(0,0,0,.35);
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--ink); font: 400 15px/1.55 var(--font); overflow: hidden; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; touch-action: manipulation; }
+  [hidden] { display: none !important; }
+  .num { font-variant-numeric: tabular-nums; direction: ltr; unicode-bidi: isolate; }
+
+  .app { height: 100%; display: flex; flex-direction: column; }
+  .bar { flex: none; display: flex; align-items: center; gap: 10px; padding: 10px 14px; min-height: 56px;
+    background: var(--bar); color: var(--bar-ink); box-shadow: 0 2px 10px rgba(0,0,0,.14); z-index: 3; }
+  .bar h1 { flex: 1; margin: 0; font-size: 19px; font-weight: 800; letter-spacing: .1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ibtn { width: 42px; height: 42px; flex: none; display: inline-grid; place-items: center; border: 0; border-radius: 14px;
+    background: rgba(255,255,255,.16); color: inherit; transition: transform .12s ease, background .2s; }
+  .ibtn:active { transform: scale(.94); }
+  .ibtn.plain { background: transparent; color: var(--muted); }
+  .main { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 14px 16px 120px; }
+  .main > * + * { margin-top: 14px; }
+
+  .nav { flex: none; display: flex; background: var(--surface); border-top: 1px solid var(--line); padding: 4px 6px calc(4px + env(safe-area-inset-bottom, 0px)); z-index: 3; }
+  .nav button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0 4px; border: 0; background: none; color: var(--muted); font-size: 12px; font-weight: 700; border-radius: 14px; }
+  .nav button[aria-current="page"] { color: var(--brand); }
+  .nav button[aria-current="page"] .ic { background: var(--brand-soft); }
+  .nav .ic { width: 52px; height: 30px; border-radius: 15px; display: grid; place-items: center; transition: background .2s; }
+  .fab { position: fixed; inset-inline-start: 16px; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); width: 58px; height: 58px; border: 0; border-radius: 20px;
+    background: var(--brand); color: var(--brand-ink); display: grid; place-items: center; box-shadow: 0 10px 24px rgba(15,118,110,.45); z-index: 4; transition: transform .15s; }
+  .fab:active { transform: scale(.93); }
+  .ic { display: inline-grid; place-items: center; line-height: 0; }
+  .ic svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .ic.sm svg { width: 18px; height: 18px; }
+  .ic.lg svg { width: 26px; height: 26px; }
+
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 14px; box-shadow: var(--shadow); }
+  .card h2, .sec-h { margin: 0 0 10px; font-size: 16px; font-weight: 800; }
+  .sec-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 2px 8px; }
+  .sec-h a, .link { color: var(--brand); font-weight: 700; font-size: 14px; background: none; border: 0; padding: 4px 2px; }
+  .hello { display: flex; flex-direction: column; gap: 0; }
+  .hello b { font-size: 22px; font-weight: 800; } .hello span { color: var(--muted); font-size: 14px; }
+  .muted { color: var(--muted); } .small { font-size: 13px; }
+
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat { position: relative; padding: 14px; border-radius: 18px; border: 1px solid var(--line); background: var(--surface); text-align: start; box-shadow: var(--shadow); }
+  .stat small { display: block; color: var(--muted); font-size: 13px; font-weight: 600; }
+  .stat b { display: block; margin-top: 4px; font-size: 21px; font-weight: 800; line-height: 1.25; overflow-wrap: anywhere; }
+  .stat i { font-style: normal; font-size: 12px; color: var(--muted); }
+  .stat.good { background: var(--good-soft); border-color: transparent; } .stat.good b { color: var(--good); }
+  .stat.warn { background: var(--warn-soft); border-color: transparent; } .stat.warn b { color: var(--warn); }
+  .stat.bad { background: var(--bad-soft); border-color: transparent; } .stat.bad b { color: var(--bad); }
+  .stat.brand { background: var(--brand); color: var(--brand-ink); border-color: transparent; } .stat.brand small, .stat.brand i { color: inherit; opacity: .85; }
+
+  .list { display: grid; gap: 8px; }
+  .row { display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; cursor: pointer; transition: transform .12s ease, background .2s; }
+  .row:active { transform: scale(.985); }
+  .av { width: 42px; height: 42px; flex: none; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 800; font-size: 18px; }
+  .row .main-t { flex: 1; min-width: 0; }
+  .row .main-t b { display: block; font-weight: 800; overflow-wrap: anywhere; line-height: 1.35; }
+  .row .main-t small { display: block; color: var(--muted); font-size: 13px; }
+  .row .amt { text-align: end; font-weight: 800; white-space: nowrap; font-size: 15px; }
+  .row .amt small { display: block; font-weight: 600; font-size: 12px; }
+  .good { color: var(--good); } .warn { color: var(--warn); } .bad { color: var(--bad); } .info { color: var(--info); }
+  .acts { display: flex; gap: 6px; flex: none; }
+  .acts button, .chipbtn { width: 38px; height: 38px; border: 0; border-radius: 12px; display: inline-grid; place-items: center; background: var(--brand-soft); color: var(--brand); }
+  .acts button.wa { background: var(--good-soft); color: var(--good); }
+  .acts button.pay { background: var(--brand); color: var(--brand-ink); }
+
+  .pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 800; background: var(--line); color: var(--ink); white-space: nowrap; }
+  .pill.good { background: var(--good-soft); color: var(--good); } .pill.warn { background: var(--warn-soft); color: var(--warn); }
+  .pill.bad { background: var(--bad-soft); color: var(--bad); } .pill.info { background: var(--info-soft); color: var(--info); }
+
+  .tools { display: grid; gap: 8px; }
+  .search { display: flex; align-items: center; gap: 8px; padding: 0 12px; min-height: 46px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; }
+  .search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font-size: 16px; }
+  .chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip { flex: none; min-height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-weight: 700; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; }
+  .chip b { min-width: 22px; padding: 0 6px; border-radius: 999px; background: var(--line); font-size: 12px; text-align: center; line-height: 20px; }
+  .chip[aria-pressed="true"] { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
+  .chip[aria-pressed="true"] b { background: rgba(255,255,255,.25); }
+
+  .btn { min-height: 48px; padding: 0 18px; border-radius: 16px; border: 0; background: var(--brand); color: var(--brand-ink); font-weight: 800; font-size: 16px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; transition: transform .12s ease, opacity .2s; }
+  .btn:active { transform: scale(.97); }
+  .btn.block { width: 100%; }
+  .btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  .btn.soft { background: var(--brand-soft); color: var(--brand); }
+  .btn.danger { background: var(--bad-soft); color: var(--bad); }
+  .btn.sm { min-height: 40px; padding: 0 14px; font-size: 14px; border-radius: 13px; }
+  .btn[disabled] { opacity: .5; }
+  .btns { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+
+  .hero { display: grid; gap: 10px; }
+  .hero .who { display: flex; align-items: center; gap: 12px; }
+  .hero .who .av { width: 54px; height: 54px; font-size: 22px; }
+  .hero .who b { font-size: 20px; font-weight: 800; line-height: 1.3; }
+  .hero .bal { padding: 12px 14px; border-radius: 16px; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .hero .bal b { font-size: 26px; font-weight: 800; }
+  .hero .bal.warn { background: var(--warn-soft); } .hero .bal.bad { background: var(--bad-soft); } .hero .bal.good { background: var(--good-soft); } .hero .bal.info { background: var(--info-soft); }
+  .kv { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; }
+  .kv span:first-child { color: var(--muted); }
+  .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; padding: 4px; border-radius: 16px; background: var(--line); }
+  .seg button { min-height: 40px; border: 0; border-radius: 12px; background: transparent; font-weight: 800; font-size: 14px; color: var(--muted); }
+  .seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+
+  .item { display: flex; align-items: center; gap: 10px; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; cursor: pointer; }
+  .item .t { flex: 1; min-width: 0; } .item .t b { display: block; overflow-wrap: anywhere; line-height: 1.35; } .item .t small { color: var(--muted); font-size: 13px; }
+  .item .a { text-align: end; font-weight: 800; white-space: nowrap; } .item .a small { display: block; font-weight: 600; font-size: 12px; color: var(--muted); }
+  .item.void { opacity: .5; } .item.void .t b, .item.void .a { text-decoration: line-through; }
+  .bar-prog { height: 6px; border-radius: 4px; background: var(--line); overflow: hidden; margin-top: 6px; }
+  .bar-prog i { display: block; height: 100%; background: var(--good); border-radius: 4px; }
+
+  .empty { text-align: center; padding: 26px 16px; color: var(--muted); }
+  .empty b { display: block; color: var(--ink); font-size: 17px; margin-bottom: 4px; }
+  .note { padding: 12px 14px; border-radius: 16px; background: var(--warn-soft); color: var(--warn); font-weight: 700; display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+  .note.brand { background: var(--brand-soft); color: var(--brand); }
+
+  .layer { position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-end; justify-content: center; background: rgba(8,16,15,.5); animation: fadeIn .2s ease both; }
+  .sheet { width: 100%; max-width: 640px; max-height: 92%; overflow-y: auto; background: var(--surface); border-radius: 26px 26px 0 0; padding: 8px 18px calc(18px + env(safe-area-inset-bottom, 0px)); animation: sheetUp .28s cubic-bezier(.2,.8,.2,1) both; }
+  .sheet::before { content: ''; display: block; width: 42px; height: 4px; border-radius: 4px; background: var(--line); margin: 4px auto 12px; }
+  .sheet h2 { margin: 0 0 12px; font-size: 19px; font-weight: 800; }
+  .sheet > * + * { margin-top: 12px; }
+  @keyframes fadeIn { from { opacity: 0; } } @keyframes sheetUp { from { transform: translateY(40px); opacity: .6; } }
+  .fld { display: grid; gap: 6px; } .fld > span { font-size: 14px; font-weight: 700; color: var(--muted); }
+  .fld input, .fld select, .fld textarea { width: 100%; min-height: 48px; padding: 8px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--bg); font-size: 16px; outline: 0; }
+  .fld input:focus, .fld select:focus, .fld textarea:focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+  .fld textarea { min-height: 96px; resize: vertical; line-height: 1.6; }
+  .fld .big { font-size: 28px; font-weight: 800; text-align: center; min-height: 62px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .qk { display: flex; flex-wrap: wrap; gap: 6px; }
+  .paper { margin: 0 auto; width: min(100%, 384px); padding: 8px; background: #fff; border: 1px dashed var(--line); border-radius: 6px; box-shadow: 0 6px 18px rgba(0,0,0,.14); }
+  .paper img { display: block; width: 100%; height: auto; background: #fff; }
+  .bars { display: flex; align-items: flex-end; gap: 3px; height: 92px; padding: 4px 0; }
+  .bars i { flex: 1; min-width: 4px; border-radius: 4px 4px 0 0; background: var(--brand); opacity: .85; }
+  .bars-l { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .toast { position: fixed; inset-inline: 16px; bottom: calc(96px + env(safe-area-inset-bottom, 0px)); z-index: 40; margin: 0 auto; max-width: 520px; padding: 12px 18px; border-radius: 999px; background: #14201F; color: #fff; font-weight: 700; text-align: center; box-shadow: 0 8px 24px rgba(0,0,0,.3); animation: sheetUp .25s ease both; }
+  .more { margin: 4px 0; }
+  @media (prefers-reduced-motion: reduce) { *, .sheet, .layer { animation: none !important; transition: none !important; } }
+  .stack { display: grid; gap: 14px; }
+  .row.wrap { flex-wrap: wrap; } .row.wrap .acts { flex-basis: 100%; justify-content: flex-end; margin-top: -2px; }
+  a.btn, a.chipbtn { text-decoration: none; }
+  .card.list { display: grid; gap: 12px; }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <header class="bar">
+    <button class="ibtn" id="bk" type="button" aria-label="رجوع" hidden></button>
+    <h1 id="ttl">دفتر الحسابات</h1>
+    <div id="bar-act"></div>
+  </header>
+  <main class="main" id="main"></main>
+  <nav class="nav" id="nav" aria-label="التنقل"></nav>
+  <button class="fab" id="fab" type="button" aria-label="إضافة"></button>
+</div>
+<div id="layer"></div>
+<div class="toast" id="toast" hidden role="status" aria-live="polite"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+(function () {
+'use strict';
+
+/* ================= helpers ================= */
+var NATIVE = !!(window.Android && window.Android.saveFile);
+function $(id) { return document.getElementById(id); }
+function add(e, c) {
+  if (c == null || c === false) return;
+  if (Array.isArray(c)) { c.forEach(function (x) { add(e, x); }); return; }
+  e.appendChild(typeof c === 'object' ? c : document.createTextNode(String(c)));
+}
+function h(tag, attrs) {
+  var e = document.createElement(tag);
+  if (attrs) for (var k in attrs) {
+    var v = attrs[k];
+    if (v == null || v === false) continue;
+    if (k === 'class') e.className = v;
+    else if (k === 'text') e.textContent = v;
+    else if (k === 'html') e.innerHTML = v;
+    else if (k.slice(0, 2) === 'on') e.addEventListener(k.slice(2), v);
+    else if (v === true) e.setAttribute(k, '');
+    else e.setAttribute(k, v);
+  }
+  for (var i = 2; i < arguments.length; i++) add(e, arguments[i]);
+  return e;
+}
+var ICONS = {
+  home: 'M3 11l9-8 9 8M5 10v10h14V10', users: 'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21c0-4 3-6 7-6s7 2 7 6M17 4a4 4 0 0 1 0 7M19 15c2 1 3 3 3 6',
+  chart: 'M5 20v-8M12 20V5M19 20v-5', gear: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9L7 7M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1',
+  plus: 'M12 5v14M5 12h14', search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM21 21l-4.3-4.3',
+  phone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z',
+  wa: 'M21 12a8.5 8.5 0 0 1-12.6 7.4L3 21l1.7-5.2A8.5 8.5 0 1 1 21 12z', receipt: 'M6 3h12v18l-3-2-3 2-3-2-3 2V3zM9 8h6M9 12h6',
+  back: 'M10 6l6 6-6 6', close: 'M6 6l12 12M18 6L6 18', edit: 'M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4',
+  share: 'M12 3v12M8 7l4-4 4 4M5 13v7h14v-7', trash: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13', check: 'M5 12l5 5 9-10',
+  clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2', upload: 'M12 16V4M8 8l4-4 4 4M5 14v6h14v-6',
+  alert: 'M12 3l10 18H2L12 3zM12 10v5M12 18h.01', user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21c0-4 4-6 8-6s8 2 8 6'
+};
+function ic(name, cls) {
+  var s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true');
+  var p = document.createElementNS('http://www.w3.org/2000/svg', 'path'); p.setAttribute('d', ICONS[name] || ''); s.appendChild(p);
+  var w = h('span', { class: 'ic' + (cls ? ' ' + cls : '') }); w.appendChild(s); return w;
+}
+var AD = '٠١٢٣٤٥٦٧٨٩', PD = '۰۱۲۳۴۵۶۷۸۹';
+function toEn(s) { return String(s == null ? '' : s).replace(/[٠-٩]/g, function (d) { return AD.indexOf(d); }).replace(/[۰-۹]/g, function (d) { return PD.indexOf(d); }); }
+function r2(n) { return Math.round(n * 100) / 100; }
+function parseAmt(v) {
+  var t = toEn(v).replace(/[٬,\s]/g, '').replace(/٫/g, '.'), n = parseFloat(t);
+  return isFinite(n) && n > 0 ? r2(n) : 0;
+}
+function money(n) { return Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 }); }
+function pad(n) { return String(n).padStart(2, '0'); }
+function iso(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+function today() { return iso(new Date()); }
+function parseIso(s) { var p = String(s).split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); }
+function addDays(s, n) { var d = parseIso(s); d.setDate(d.getDate() + n); return iso(d); }
+function dayDiff(a, b) { return Math.round((parseIso(a) - parseIso(b)) / 86400000); }
+function ymOf(s) { return String(s).slice(0, 7); }
+function nextYm(m) { var p = m.split('-'), y = +p[0], mo = +p[1] + 1; if (mo > 12) { mo = 1; y++; } return y + '-' + pad(mo); }
+function addMonthIso(s, n, day) {
+  var p = s.split('-'), y = +p[0], m = +p[1] - 1 + n;
+  y += Math.floor(m / 12); m = ((m % 12) + 12) % 12;
+  var dim = new Date(y, m + 1, 0).getDate();
+  return y + '-' + pad(m + 1) + '-' + pad(Math.min(day || +p[2], dim));
+}
+function hm(ts) { var d = new Date(ts); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+function norm(s) {
+  return toEn(s).toLowerCase().replace(/[ً-ْـ]/g, '').replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
+    .replace(/ؤ/g, 'و').replace(/ئ/g, 'ي').replace(/\s+/g, ' ').trim();
+}
+function hKey(num) { var d = toEn(num).replace(/\D/g, ''); return d.length >= 7 ? d.slice(-9) : d; }
+function recNo(p) { return (db.cfg.pre || '') + String(p.no).padStart(5, '0'); }
+var toastT = null;
+function toast(msg, ms) {
+  var t = $('toast'); t.textContent = msg; t.hidden = false;
+  clearTimeout(toastT); toastT = setTimeout(function () { t.hidden = true; }, ms || 3000);
+}
+function buzz(p) { try { if (navigator.vibrate) navigator.vibrate(p); } catch (e) {} }
+// destructive buttons ask twice: the first tap changes the label, the second one confirms
+function armed(btn, label, fn) {
+  var base = btn.textContent, t = null, on = false;
+  btn.addEventListener('click', function () {
+    if (on) { clearTimeout(t); on = false; fn(); return; }
+    on = true; btn.textContent = label;
+    t = setTimeout(function () { on = false; btn.textContent = base; }, 3000);
+  });
+  return btn;
+}
+
+/* ================= data ================= */
+var DEF_TPL = 'السلام عليكم {الاسم}، نذكّركم بأن المتبقي عليكم {المبلغ} {العملة} وكان موعده {التاريخ}. نشكر لكم حسن تعاونكم. {المحل}';
+var KEY = 'ledger:v1';
+var db = null, idx = null, ver = 0, accCache = {};
+
+function blank() {
+  return { v: 1, seq: { rec: 0, id: 0 }, customers: {}, charges: [], pays: [], subs: [],
+    cfg: { shop: '', shopph: '', curr: '', foot: 'شكراً لتعاملكم معنا', pw: 384, cc: '', tpl: DEF_TPL, theme: 'auto', pre: '' },
+    meta: { saved: 0, lastBackup: 0 } };
+}
+function fixDb(d) {
+  var b = blank();
+  d = d && typeof d === 'object' ? d : {};
+  var o = { v: 1, seq: Object.assign(b.seq, d.seq || {}), customers: d.customers && typeof d.customers === 'object' ? d.customers : {},
+    charges: Array.isArray(d.charges) ? d.charges : [], pays: Array.isArray(d.pays) ? d.pays : [], subs: Array.isArray(d.subs) ? d.subs : [],
+    cfg: Object.assign(b.cfg, d.cfg || {}), meta: Object.assign(b.meta, d.meta || {}) };
+  return o;
+}
+function nid() { return ++db.seq.id; }
+
+// ---- storage: IndexedDB first, localStorage as a mirror, newest copy wins ----
+function idbOpen(cb) {
+  try {
+    var rq = indexedDB.open('ledger-db', 1);
+    rq.onupgradeneeded = function () { rq.result.createObjectStore('kv'); };
+    rq.onsuccess = function () { cb(rq.result); };
+    rq.onerror = rq.onblocked = function () { cb(null); };
+  } catch (e) { cb(null); }
+}
+function idbSet(val) {
+  idbOpen(function (d) {
+    if (!d) return;
+    try { var tx = d.transaction('kv', 'readwrite'); tx.objectStore('kv').put(val, KEY); tx.oncomplete = tx.onerror = tx.onabort = function () { d.close(); }; } catch (e) { d.close(); }
+  });
+}
+function idbGet() {
+  return new Promise(function (res) {
+    var done = false, fin = function (v) { if (!done) { done = true; res(v); } };
+    setTimeout(function () { fin(null); }, 2500);
+    idbOpen(function (d) {
+      if (!d) { fin(null); return; }
+      try { var rq = d.transaction('kv').objectStore('kv').get(KEY); rq.onsuccess = function () { d.close(); fin(rq.result || null); }; rq.onerror = function () { d.close(); fin(null); }; }
+      catch (e) { d.close(); fin(null); }
+    });
+  });
+}
+var pT = null;
+function persist() { clearTimeout(pT); pT = setTimeout(flush, 350); }
+function flush() {
+  if (!db) return;
+  clearTimeout(pT); pT = null;
+  db.meta.saved = Date.now();
+  idbSet(db);
+  try { var s = JSON.stringify(db); if (s.length < 3500000) localStorage.setItem(KEY, s); else localStorage.removeItem(KEY); } catch (e) {}
+}
+window.addEventListener('pagehide', flush);
+document.addEventListener('visibilitychange', function () { if (document.hidden) flush(); });
+function load() {
+  var ls = null;
+  try { ls = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { ls = null; }
+  return idbGet().then(function (d) {
+    var pick = (ls && d) ? ((d.meta && d.meta.saved || 0) >= (ls.meta && ls.meta.saved || 0) ? d : ls) : (ls || d);
+    db = fixDb(pick);
+  });
+}
+
+// ---- indexes and account math ----
+function dirty() { idx = null; ver++; accCache = {}; persist(); }
+function ensure() {
+  if (idx) return idx;
+  idx = { ch: {}, py: {} };
+  db.charges.forEach(function (c) { if (!c.void) (idx.ch[c.cid] = idx.ch[c.cid] || []).push(c); });
+  db.pays.forEach(function (p) { if (!p.void) (idx.py[p.cid] = idx.py[p.cid] || []).push(p); });
+  return idx;
+}
+// payments settle the oldest charges first; everything else is derived from that
+function acct(cid) {
+  var c = accCache[cid];
+  if (c) return c;
+  var ix = ensure(), ch = (ix.ch[cid] || []).slice(), py = ix.py[cid] || [], td = today();
+  ch.sort(function (a, b) { return a.due < b.due ? -1 : a.due > b.due ? 1 : a.id - b.id; });
+  var paid = 0, total = 0, last = 0;
+  py.forEach(function (p) { paid += p.amt; if (p.ts > last) last = p.ts; });
+  paid = r2(paid);
+  var rem = paid, items = [], overdue = 0, maxLate = 0, next = null, nextLeft = 0;
+  ch.forEach(function (x) {
+    total += x.amt;
+    var got = Math.min(x.amt, Math.max(0, rem)); got = r2(got); rem = r2(rem - got);
+    var left = r2(x.amt - got), late = left > 0.004 && x.due < td;
+    if (late) { overdue += left; maxLate = Math.max(maxLate, dayDiff(td, x.due)); }
+    if (left > 0.004 && !next) { next = x; nextLeft = left; }
+    items.push({ c: x, paid: got, left: left, late: late, status: left <= 0.004 ? 'paid' : (got > 0 ? 'part' : (late ? 'late' : 'open')) });
+  });
+  total = r2(total);
+  c = { items: items, total: total, paid: paid, bal: r2(total - paid), overdue: r2(overdue), maxLate: maxLate, next: next, nextLeft: nextLeft, lastPay: last,
+    oldestLate: items.filter(function (i) { return i.late; }).map(function (i) { return i.c.due; })[0] || null };
+  accCache[cid] = c;
+  return c;
+}
+function activeCustomers() { return Object.keys(db.customers).map(function (k) { return db.customers[k]; }).filter(function (c) { return !c.arch; }); }
+function totals() {
+  var t = { out: 0, overdue: 0, lateN: 0, owingN: 0, today: 0, month: 0, todayN: 0 }, td = today(), mo = ymOf(td);
+  activeCustomers().forEach(function (c) {
+    var a = acct(c.id);
+    if (a.bal > 0.004) { t.out += a.bal; t.owingN++; }
+    if (a.overdue > 0.004) { t.overdue += a.overdue; t.lateN++; }
+  });
+  db.pays.forEach(function (p) { if (p.void) return; if (p.d === td) { t.today += p.amt; t.todayN++; } if (ymOf(p.d) === mo) t.month += p.amt; });
+  t.out = r2(t.out); t.overdue = r2(t.overdue); t.today = r2(t.today); t.month = r2(t.month);
+  return t;
+}
+
+// ---- mutations ----
+function addCustomer(name, phone, note) {
+  var c = { id: nid(), name: String(name).trim(), phone: String(phone || '').trim(), note: String(note || '').trim(), created: Date.now() };
+  db.customers[c.id] = c; dirty(); return c;
+}
+function addCharge(cid, amt, due, desc, extra) {
+  var c = Object.assign({ id: nid(), cid: cid, amt: r2(amt), date: today(), due: due || today(), desc: desc || '', kind: 'debt' }, extra || {});
+  db.charges.push(c); dirty(); return c;
+}
+function addInstallments(cid, total, n, firstDue, desc) {
+  var each = Math.floor(total / n * 100) / 100, plan = nid(), day = +firstDue.slice(8), base = desc || 'قسط';
+  for (var i = 0; i < n; i++) {
+    var amt = i === n - 1 ? r2(total - r2(each * (n - 1))) : each;
+    db.charges.push({ id: nid(), cid: cid, amt: amt, date: today(), due: addMonthIso(firstDue, i, day), desc: base + ' ' + (i + 1) + '/' + n, kind: 'inst', plan: plan });
+  }
+  dirty();
+}
+function addSub(cid, amt, day, startYm, desc) {
+  var s = { id: nid(), cid: cid, amt: r2(amt), day: day, start: startYm, last: null, active: 1, desc: desc || '' };
+  db.subs.push(s); genSubs(); dirty(); return s;
+}
+// monthly subscriptions create their charge when the month begins
+function genSubs() {
+  var cm = ymOf(today()), n = 0;
+  db.subs.forEach(function (s) {
+    if (!s.active || !db.customers[s.cid]) return;
+    var m = s.last ? nextYm(s.last) : s.start;
+    while (m <= cm) {
+      db.charges.push({ id: nid(), cid: s.cid, amt: s.amt, date: m + '-01', due: addMonthIso(m + '-01', 0, s.day), desc: s.desc || 'اشتراك شهري', kind: 'sub', sub: s.id });
+      s.last = m; m = nextYm(m); n++;
+    }
+  });
+  if (n) dirty();
+  return n;
+}
+function addPayment(cid, amt, method, note, dateIso) {
+  var d = dateIso || today(), ts = d === today() ? Date.now() : parseIso(d).getTime() + 12 * 3600000;
+  var p = { id: nid(), no: ++db.seq.rec, cid: cid, amt: r2(amt), ts: ts, d: d, m: method || 'cash', t: String(note || '').trim() };
+  db.pays.push(p);
+  idx = null; ver++; accCache = {};
+  p.after = acct(cid).bal;               // balance right after this payment, kept for the receipt
+  dirty(); return p;
+}
+function methodName(m) { return m === 'transfer' ? 'تحويل' : m === 'other' ? 'أخرى' : 'نقداً'; }
+
+/* ================= phone / whatsapp ================= */
+function intl(phone) {
+  var t = toEn(phone).trim(), digits = t.replace(/\D/g, ''), cc = String(db.cfg.cc || '').replace(/\D/g, '');
+  if (!digits) return '';
+  if (t.charAt(0) === '+') return digits;
+  if (digits.indexOf('00') === 0) return digits.slice(2);
+  if (cc && digits.charAt(0) === '0') return cc + digits.slice(1);
+  if (cc && digits.indexOf(cc) !== 0 && digits.length <= 10) return cc + digits;
+  return digits;
+}
+function waLink(phone, text) { var n = intl(phone); return n ? 'https://wa.me/' + n + '?text=' + encodeURIComponent(text || '') : ''; }
+function fill(tpl, vars) {
+  return String(tpl).replace(/\{([^}]+)\}/g, function (m, k) { return vars[k] != null ? vars[k] : m; });
+}
+function reminderText(c) {
+  var a = acct(c.id), amt = a.overdue > 0.004 ? a.overdue : Math.max(a.bal, 0);
+  var date = a.oldestLate || (a.next && a.next.due) || today();
+  return fill(db.cfg.tpl || DEF_TPL, { 'الاسم': c.name, 'المبلغ': money(amt), 'العملة': db.cfg.curr || '', 'التاريخ': date, 'المحل': db.cfg.shop || '' }).replace(/\s+\./g, '.').replace(/ {2,}/g, ' ').trim();
+}
+
+/* ================= documents drawn as images (receipt, statement) ================= */
+var DF = '"Noto Sans Arabic","IBM Plex Sans Arabic","Segoe UI",Tahoma,Arial,sans-serif';
+function wrapLines(x, text, maxW) {
+  var words = String(text).split(/\s+/), lines = [], cur = '';
+  words.forEach(function (w) {
+    var t = cur ? cur + ' ' + w : w;
+    if (cur && x.measureText(t).width > maxW) { lines.push(cur); cur = w; } else cur = t;
+  });
+  if (cur) lines.push(cur);
+  return lines;
+}
+// a tiny page builder: the paper is as wide as the printer's dots, the result is pure black and white
+function Doc() {
+  this.W = +db.cfg.pw || 384; this.P = Math.round(this.W * 0.05); this.CW = this.W - this.P * 2;
+  this.cv = document.createElement('canvas'); this.cv.width = this.W; this.cv.height = 4200;
+  this.x = this.cv.getContext('2d'); this.x.fillStyle = '#fff'; this.x.fillRect(0, 0, this.W, 4200);
+  this.x.fillStyle = '#000'; this.x.strokeStyle = '#000'; this.y = this.P;
+}
+Doc.prototype.font = function (sz, bold) { this.x.font = (bold ? '700 ' : '500 ') + sz + 'px ' + DF; };
+Doc.prototype.text = function (txt, sz, bold, align) {
+  var x = this.x, self = this;
+  this.font(sz, bold); x.direction = 'rtl'; x.textBaseline = 'top'; x.textAlign = align || 'right';
+  var ax = align === 'center' ? this.W / 2 : this.W - this.P;
+  wrapLines(x, txt, this.CW).forEach(function (ln) { x.fillText(ln, ax, self.y); self.y += Math.round(sz * 1.5); });
+};
+Doc.prototype.row = function (right, left, sz, bold) {
+  var x = this.x; this.font(sz, bold); x.textBaseline = 'top';
+  x.direction = 'ltr'; var lw = x.measureText(left).width;
+  var r = String(right), maxR = this.CW - lw - 12;
+  x.direction = 'rtl';
+  if (x.measureText(r).width > maxR) { while (r.length > 1 && x.measureText(r + '…').width > maxR) r = r.slice(0, -1); r += '…'; }
+  x.textAlign = 'right'; x.fillText(r, this.W - this.P, this.y);
+  x.direction = 'ltr'; x.textAlign = 'left'; x.fillText(left, this.P, this.y);
+  this.y += Math.round(sz * 1.5);
+};
+Doc.prototype.rule = function (dash) {
+  var x = this.x; this.y += 6; x.save(); x.lineWidth = 2; if (dash) x.setLineDash([6, 5]);
+  x.beginPath(); x.moveTo(this.P, this.y); x.lineTo(this.W - this.P, this.y); x.stroke(); x.restore(); this.y += 14;
+};
+Doc.prototype.gap = function (n) { this.y += n; };
+Doc.prototype.box = function (label, value) {
+  var x = this.x, by = this.y, bh = 118, sz = 46;
+  x.lineWidth = 3; x.strokeRect(this.P, by, this.CW, bh);
+  this.font(20, false); x.direction = 'rtl'; x.textAlign = 'center'; x.textBaseline = 'top'; x.fillText(label, this.W / 2, by + 10);
+  this.font(sz, true);
+  while (sz > 20 && x.measureText(value).width > this.CW - 24) { sz -= 2; this.font(sz, true); }
+  x.fillText(value, this.W / 2, by + 48); this.y = by + bh + 14;
+};
+Doc.prototype.header = function (title) {
+  var shop = String(db.cfg.shop || '').trim(), ph = String(db.cfg.shopph || '').trim();
+  if (shop) this.text(shop, 30, true, 'center');
+  if (ph) this.text('هاتف: ' + ph, 20, false, 'center');
+  if (shop || ph) this.rule(true);
+  this.gap(2); this.text(title, 36, true, 'center'); this.rule(false);
+};
+Doc.prototype.footer = function () {
+  var foot = String(db.cfg.foot || '').trim();
+  if (foot) { this.gap(8); this.text(foot, 20, false, 'center'); }
+  this.gap(36);
+};
+Doc.prototype.blob = function () {
+  var W = this.W, H = Math.min(this.y, this.cv.height), out = document.createElement('canvas');
+  out.width = W; out.height = H;
+  var oc = out.getContext('2d'); oc.drawImage(this.cv, 0, 0);
+  var id = oc.getImageData(0, 0, W, H), d = id.data;
+  for (var q = 0; q < d.length; q += 4) {
+    var v = (d[q] * 0.3 + d[q + 1] * 0.59 + d[q + 2] * 0.11) < 170 ? 0 : 255;
+    d[q] = d[q + 1] = d[q + 2] = v; d[q + 3] = 255;
+  }
+  oc.putImageData(id, 0, 0);
+  return new Promise(function (res, rej) { out.toBlob(function (b) { b ? res(b) : rej(new Error('blob')); }, 'image/png'); });
+};
+function curTxt() { return db.cfg.curr ? ' ' + db.cfg.curr : ''; }
+function renderReceipt(p) {
+  var c = db.customers[p.cid] || { name: '—', phone: '' }, d = new Doc();
+  d.header('سند قبض');
+  d.text('رقم السند: ' + recNo(p), 24, true);
+  d.text('التاريخ: ' + p.d + '   ' + hm(p.ts), 22, false);
+  d.rule(true);
+  d.text('استلمنا من السيد/ة:', 20, false);
+  d.text(c.name || '—', 28, true);
+  if (c.phone) d.text('الهاتف: ' + c.phone, 22, false);
+  d.gap(10);
+  d.box('المبلغ المستلم', money(p.amt) + curTxt());
+  d.text('طريقة الدفع: ' + methodName(p.m), 22, false);
+  if (p.t) d.text('ملاحظة: ' + p.t, 22, false);
+  if (p.after != null) d.text(p.after > 0.004 ? 'المتبقي عليكم: ' + money(p.after) + curTxt() : (p.after < -0.004 ? 'رصيد لكم: ' + money(-p.after) + curTxt() : 'الحساب مسدّد بالكامل'), 22, true);
+  d.rule(true);
+  d.text('المستلم: ____________________', 22, false);
+  d.footer();
+  return d.blob();
+}
+function movements(cid) {
+  var ix = ensure(), rows = [];
+  (ix.ch[cid] || []).forEach(function (c) { rows.push({ d: c.date, t: c.desc || 'مستحق', a: c.amt, id: c.id }); });
+  (ix.py[cid] || []).forEach(function (p) { rows.push({ d: p.d, t: 'تسديد #' + recNo(p), a: -p.amt, id: p.id }); });
+  rows.sort(function (a, b) { return a.d < b.d ? -1 : a.d > b.d ? 1 : a.id - b.id; });
+  return rows;
+}
+function renderStatement(c) {
+  var a = acct(c.id), d = new Doc(), mv = movements(c.id).slice(-22);
+  d.header('كشف حساب');
+  d.text(c.name, 28, true);
+  if (c.phone) d.text('الهاتف: ' + c.phone, 22, false);
+  d.text('بتاريخ: ' + today(), 20, false);
+  d.rule(true);
+  d.row('إجمالي المستحقات', money(a.total), 22, false);
+  d.row('إجمالي المسدَّد', money(a.paid), 22, false);
+  d.row(a.bal >= 0 ? 'المتبقي' : 'رصيد لكم', money(Math.abs(a.bal)) + curTxt(), 26, true);
+  if (a.overdue > 0.004) d.row('منها متأخر', money(a.overdue), 22, true);
+  d.rule(true);
+  if (mv.length) {
+    d.text('آخر الحركات', 22, true);
+    mv.forEach(function (m) { d.row(m.d.slice(2) + ' ' + m.t, (m.a < 0 ? '-' : '+') + money(Math.abs(m.a)), 20, false); });
+  } else d.text('لا توجد حركات.', 20, false);
+  d.footer();
+  return d.blob();
+}
+function receiptText(p) {
+  var c = db.customers[p.cid] || { name: '—' };
+  var L = [(db.cfg.shop || '') , 'سند قبض رقم ' + recNo(p), 'التاريخ: ' + p.d + ' ' + hm(p.ts), 'استلمنا من: ' + c.name, 'المبلغ: ' + money(p.amt) + curTxt(), 'طريقة الدفع: ' + methodName(p.m)];
+  if (p.t) L.push('ملاحظة: ' + p.t);
+  if (p.after != null) L.push(p.after > 0.004 ? 'المتبقي عليكم: ' + money(p.after) + curTxt() : 'الحساب مسدّد بالكامل');
+  if (db.cfg.foot) L.push(db.cfg.foot);
+  return L.filter(function (x) { return x !== ''; }).join('\n');
+}
+function statementText(c) {
+  var a = acct(c.id), L = ['كشف حساب — ' + c.name, 'بتاريخ: ' + today(), 'إجمالي المستحقات: ' + money(a.total) + curTxt(), 'إجمالي المسدَّد: ' + money(a.paid) + curTxt(),
+    (a.bal >= 0 ? 'المتبقي: ' : 'رصيد لكم: ') + money(Math.abs(a.bal)) + curTxt()];
+  if (a.overdue > 0.004) L.push('منه متأخر: ' + money(a.overdue) + curTxt());
+  var mv = movements(c.id).slice(-12);
+  if (mv.length) { L.push('', 'آخر الحركات:'); mv.forEach(function (m) { L.push(m.d + ' | ' + m.t + ' | ' + (m.a < 0 ? '-' : '+') + money(Math.abs(m.a))); }); }
+  if (db.cfg.shop) L.push('', db.cfg.shop);
+  return L.join('\n');
+}
+
+/* ================= sharing ================= */
+function b64(blob) { return new Promise(function (res, rej) { var r = new FileReader(); r.onload = function () { res(String(r.result).split(',')[1]); }; r.onerror = rej; r.readAsDataURL(blob); }); }
+async function shareBlob(blob, name, mime, keepInDownloads) {
+  if (NATIVE) {
+    var ok = false;
+    try { ok = await Promise.resolve(window.Android.saveFile(await b64(blob), name, mime, !keepInDownloads)); } catch (e) { ok = false; }
+    if (!ok) toast('تعذّر تنفيذ العملية.'); else if (keepInDownloads) toast('تم الحفظ في مجلد التنزيلات.', 3500);
+    return ok;
+  }
+  try {
+    var f = new File([blob], name, { type: mime });
+    if (navigator.canShare && navigator.canShare({ files: [f] })) { await navigator.share({ files: [f] }); return true; }
+  } catch (e) { if (e && e.name === 'AbortError') return false; }
+  var a = h('a', { href: URL.createObjectURL(blob), download: name }); document.body.appendChild(a); a.click();
+  setTimeout(function () { a.remove(); }, 800); toast('تم تنزيل الملف.');
+  return true;
+}
+async function shareText(t) {
+  if (NATIVE && window.Android.shareText) { window.Android.shareText(t); return; }
+  try { if (navigator.share) { await navigator.share({ text: t }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
+  try { await navigator.clipboard.writeText(t); toast('تم نسخ النص.'); } catch (e) { toast('تعذّر النسخ.'); }
+}
+function csvBlob(rows) {
+  var s = '﻿' + rows.map(function (r) {
+    return r.map(function (c) { c = String(c == null ? '' : c); return /[",\n;\r]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c; }).join(',');
+  }).join('\r\n');
+  return new Blob([s], { type: 'text/csv;charset=utf-8' });
+}
+
+/* ================= sheets (modal windows) ================= */
+var sheets = [];
+function openSheet(build, opts) {
+  var layer = h('div', { class: 'layer' }), sheet = h('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true' });
+  var entry = { layer: layer, sheet: sheet, onclose: opts && opts.onclose };
+  layer.addEventListener('click', function (e) { if (e.target === layer) closeSheet(entry); });
+  layer.appendChild(sheet);
+  build(sheet, function () { closeSheet(entry); });
+  $('layer').appendChild(layer); sheets.push(entry);
+  return entry;
+}
+function closeSheet(e) {
+  var i = sheets.indexOf(e); if (i < 0) return;
+  sheets.splice(i, 1); e.layer.remove(); if (e.onclose) e.onclose();
+}
+function closeTop() { if (!sheets.length) return false; closeSheet(sheets[sheets.length - 1]); return true; }
+function closeAll() { while (sheets.length) closeSheet(sheets[sheets.length - 1]); }
+function fld(label, input) { return h('label', { class: 'fld' }, h('span', { text: label }), input); }
+function inp(attrs) { return h('input', Object.assign({ type: 'text', autocomplete: 'off' }, attrs || {})); }
+function seg(opts, val, on) {
+  var wrap = h('div', { class: 'seg' });
+  opts.forEach(function (o) {
+    var b = h('button', { type: 'button', 'aria-pressed': o[0] === val ? 'true' : 'false', text: o[1] });
+    b.addEventListener('click', function () {
+      val = o[0]; Array.prototype.forEach.call(wrap.children, function (c) { c.setAttribute('aria-pressed', c === b ? 'true' : 'false'); }); on(val);
+    });
+    wrap.appendChild(b);
+  });
+  return wrap;
+}
+function qchip(txt, fn) { return h('button', { type: 'button', class: 'chip', text: txt, onclick: fn }); }
+
+/* ---- customer form ---- */
+function customerForm(c, after) {
+  openSheet(function (sh, close) {
+    var name = inp({ value: c ? c.name : '', placeholder: 'اسم العميل' }), phone = inp({ value: c ? c.phone : '', inputmode: 'tel', placeholder: '07xx xxx xxxx' }),
+      note = h('textarea', { placeholder: 'عنوان، ملاحظة...' }); note.value = c ? c.note : '';
+    sh.appendChild(h('h2', { text: c ? 'تعديل العميل' : 'عميل جديد' }));
+    sh.appendChild(fld('الاسم', name)); sh.appendChild(fld('الهاتف', phone)); sh.appendChild(fld('ملاحظات', note));
+    var save = h('button', { class: 'btn block', type: 'button', text: 'حفظ' });
+    save.addEventListener('click', function () {
+      var n = name.value.trim(); if (!n) { toast('اكتب اسم العميل.'); return; }
+      var k = hKey(phone.value);
+      if (k) {
+        var dup = activeCustomers().filter(function (x) { return x.id !== (c && c.id) && hKey(x.phone) === k; })[0];
+        if (dup) { toast('هذا الرقم مسجّل للعميل «' + dup.name + '».', 4000); return; }
+      }
+      if (c) { c.name = n; c.phone = phone.value.trim(); c.note = note.value.trim(); dirty(); toast('تم الحفظ.'); }
+      else { c = addCustomer(n, phone.value, note.value); toast('تمت إضافة العميل.'); }
+      close(); if (after) after(c);
+    });
+    sh.appendChild(save);
+    if (c) sh.appendChild(armed(h('button', { class: 'btn danger block', type: 'button', text: 'أرشفة العميل' }), 'اضغط مرة أخرى للتأكيد', function () { c.arch = 1; dirty(); close(); toast('تمت الأرشفة.'); go('cust'); }));
+    setTimeout(function () { try { name.focus(); } catch (e) {} }, 250);
+  });
+}
+
+/* ---- charge form: one debt, installments, or a monthly subscription ---- */
+function chargeForm(cid) {
+  openSheet(function (sh, close) {
+    var kind = 'debt', td = today();
+    var amt = inp({ inputmode: 'decimal', placeholder: '0', class: 'big' }), desc = inp({ placeholder: 'مثال: فاتورة، اشتراك إنترنت، قسط جهاز' });
+    var due = inp({ type: 'date', value: td }), count = inp({ inputmode: 'numeric', value: '6' }), first = inp({ type: 'date', value: addMonthIso(td, 1, +td.slice(8)) });
+    var day = inp({ inputmode: 'numeric', value: String(Math.min(+td.slice(8), 28)) }), startSel = 'now';
+    var hint = h('p', { class: 'muted small' });
+    var gDebt = h('div', { class: 'list' }, fld('تاريخ الاستحقاق', due)),
+      gInst = h('div', { class: 'list' }, h('div', { class: 'two' }, fld('عدد الأقساط', count), fld('أول قسط', first)), hint),
+      gSub = h('div', { class: 'list' }, fld('يوم الاستحقاق من كل شهر', day), seg([['now', 'يبدأ هذا الشهر'], ['next', 'يبدأ الشهر القادم']], startSel, function (v) { startSel = v; }));
+    function upd() {
+      gDebt.hidden = kind !== 'debt'; gInst.hidden = kind !== 'inst'; gSub.hidden = kind !== 'sub';
+      var a = parseAmt(amt.value), n = Math.max(2, Math.min(120, parseInt(toEn(count.value), 10) || 0));
+      hint.textContent = (kind === 'inst' && a && n >= 2) ? 'كل قسط تقريباً ' + money(Math.floor(a / n * 100) / 100) + curTxt() : '';
+      lab.textContent = kind === 'sub' ? 'المبلغ كل شهر' : (kind === 'inst' ? 'المبلغ الإجمالي' : 'المبلغ');
+    }
+    var lab = h('span', { text: 'المبلغ' }), amtF = h('label', { class: 'fld' }, lab, amt);
+    sh.appendChild(h('h2', { text: 'مستحق جديد' }));
+    sh.appendChild(seg([['debt', 'دين / فاتورة'], ['inst', 'أقساط'], ['sub', 'اشتراك شهري']], kind, function (v) { kind = v; upd(); }));
+    sh.appendChild(amtF); sh.appendChild(gDebt); sh.appendChild(gInst); sh.appendChild(gSub); sh.appendChild(fld('الوصف', desc));
+    amt.addEventListener('input', upd); count.addEventListener('input', upd); upd();
+    var save = h('button', { class: 'btn block', type: 'button', text: 'حفظ المستحق' });
+    save.addEventListener('click', function () {
+      var a = parseAmt(amt.value); if (!a) { toast('اكتب مبلغاً صحيحاً.'); return; }
+      if (kind === 'debt') { addCharge(cid, a, due.value || td, desc.value.trim(), { kind: 'debt' }); }
+      else if (kind === 'inst') {
+        var n = parseInt(toEn(count.value), 10);
+        if (!(n >= 2 && n <= 120)) { toast('عدد الأقساط بين 2 و120.'); return; }
+        if (!first.value) { toast('اختر تاريخ أول قسط.'); return; }
+        addInstallments(cid, a, n, first.value, desc.value.trim());
+      } else {
+        var dd = parseInt(toEn(day.value), 10); if (!(dd >= 1 && dd <= 31)) { toast('يوم الاستحقاق بين 1 و31.'); return; }
+        var m = ymOf(td); if (startSel === 'next') m = nextYm(m);
+        addSub(cid, a, dd, m, desc.value.trim());
+      }
+      buzz(15); close(); toast('تمت إضافة المستحق.'); render();
+    });
+    sh.appendChild(save);
+    setTimeout(function () { try { amt.focus(); } catch (e) {} }, 250);
+  });
+}
+function chargeSheet(it) {
+  var c = it.c;
+  openSheet(function (sh, close) {
+    var amt = inp({ inputmode: 'decimal', value: String(c.amt), class: 'big' }), due = inp({ type: 'date', value: c.due }), desc = inp({ value: c.desc });
+    sh.appendChild(h('h2', { text: 'تفاصيل المستحق' }));
+    sh.appendChild(h('div', { class: 'card' },
+      h('div', { class: 'kv' }, h('span', { text: 'المسدَّد منه' }), h('b', { class: 'num', text: money(it.paid) + curTxt() })),
+      h('div', { class: 'kv' }, h('span', { text: 'المتبقي' }), h('b', { class: 'num ' + (it.left > 0 ? (it.late ? 'bad' : 'warn') : 'good'), text: money(it.left) + curTxt() }))));
+    sh.appendChild(fld('المبلغ', amt)); sh.appendChild(fld('تاريخ الاستحقاق', due)); sh.appendChild(fld('الوصف', desc));
+    if (c.kind === 'sub') sh.appendChild(h('p', { class: 'muted small', text: 'هذا المستحق يتولّد تلقائياً من اشتراك شهري. لإيقاف الاشتراك افتح تبويب «الاشتراكات».' }));
+    var save = h('button', { class: 'btn block', type: 'button', text: 'حفظ التعديل' });
+    save.addEventListener('click', function () {
+      var a = parseAmt(amt.value); if (!a) { toast('اكتب مبلغاً صحيحاً.'); return; }
+      c.amt = a; c.due = due.value || c.due; c.desc = desc.value.trim(); dirty(); close(); toast('تم الحفظ.'); render();
+    });
+    sh.appendChild(save);
+    sh.appendChild(armed(h('button', { class: 'btn danger block', type: 'button', text: 'حذف المستحق' }), 'اضغط مرة أخرى للتأكيد', function () { c.void = 1; dirty(); close(); toast('تم حذف المستحق.'); render(); }));
+  });
+}
+
+/* ---- payment form and receipt viewer ---- */
+function payForm(cid, preset) {
+  var cu = db.customers[cid]; if (!cu) return;
+  openSheet(function (sh, close) {
+    var a = acct(cid), method = 'cash';
+    var amt = inp({ inputmode: 'decimal', placeholder: '0', class: 'big', value: preset ? String(preset) : '' }), date = inp({ type: 'date', value: today() }), note = inp({ placeholder: 'اختياري' });
+    sh.appendChild(h('h2', { text: 'تسديد جديد' }));
+    sh.appendChild(h('div', { class: 'card' }, h('b', { text: cu.name }),
+      h('div', { class: 'kv' }, h('span', { text: a.bal >= 0 ? 'المتبقي عليه' : 'رصيد له' }), h('b', { class: 'num', text: money(Math.abs(a.bal)) + curTxt() })),
+      a.overdue > 0.004 ? h('div', { class: 'kv' }, h('span', { text: 'منه متأخر' }), h('b', { class: 'num bad', text: money(a.overdue) + curTxt() })) : null));
+    sh.appendChild(fld('المبلغ', amt));
+    var qk = h('div', { class: 'qk' });
+    if (a.bal > 0.004) qk.appendChild(qchip('كامل المتبقي ' + money(a.bal), function () { amt.value = String(a.bal); }));
+    if (a.overdue > 0.004 && Math.abs(a.overdue - a.bal) > 0.004) qk.appendChild(qchip('المتأخر ' + money(a.overdue), function () { amt.value = String(a.overdue); }));
+    if (a.nextLeft > 0.004 && Math.abs(a.nextLeft - a.bal) > 0.004) qk.appendChild(qchip('القسط القادم ' + money(a.nextLeft), function () { amt.value = String(a.nextLeft); }));
+    if (qk.children.length) sh.appendChild(qk);
+    sh.appendChild(seg([['cash', 'نقداً'], ['transfer', 'تحويل'], ['other', 'أخرى']], method, function (v) { method = v; }));
+    sh.appendChild(h('div', { class: 'two' }, fld('تاريخ التسديد', date), fld('ملاحظة', note)));
+    var save = h('button', { class: 'btn block', type: 'button', text: 'حفظ وإصدار سند' });
+    save.addEventListener('click', function () {
+      var v = parseAmt(amt.value); if (!v) { toast('اكتب مبلغاً صحيحاً.'); return; }
+      if (date.value && date.value > today()) { toast('لا يمكن اختيار تاريخ مستقبلي.'); return; }
+      var p = addPayment(cid, v, method, note.value, date.value || today());
+      buzz([20, 30, 20]); close(); render(); receiptViewer(p, true);
+    });
+    sh.appendChild(save);
+    setTimeout(function () { try { amt.focus(); } catch (e) {} }, 250);
+  });
+}
+function receiptViewer(p, isNew) {
+  openSheet(function (sh, close) {
+    var paper = h('div', { class: 'paper' }, h('p', { class: 'muted small', text: 'جارٍ تجهيز الوصل…' })), blob = null, url = null;
+    sh.appendChild(h('h2', { text: (isNew ? 'تم إصدار السند ' : 'سند رقم ') + recNo(p) }));
+    var print = h('button', { class: 'btn block', type: 'button', text: 'طباعة / مشاركة الوصل' });
+    print.addEventListener('click', function () { if (blob) shareBlob(blob, 'receipt-' + recNo(p) + '.png', 'image/png'); });
+    sh.appendChild(print); sh.appendChild(paper);
+    var cu = db.customers[p.cid], link = cu ? waLink(cu.phone, receiptText(p)) : '';
+    var row = h('div', { class: 'btns' }, h('button', { class: 'btn soft sm', type: 'button', text: 'مشاركة كنص', onclick: function () { shareText(receiptText(p)); } }),
+      link ? h('a', { class: 'btn soft sm', href: link, text: 'إرسال واتساب' }) : null);
+    sh.appendChild(row);
+    var vb = h('button', { class: 'btn danger sm block', type: 'button', text: p.void ? 'استرجاع السند' : 'إلغاء السند' });
+    sh.appendChild(armed(vb, 'اضغط مرة أخرى للتأكيد', function () { p.void = p.void ? 0 : 1; dirty(); close(); toast(p.void ? 'تم إلغاء السند.' : 'تم استرجاع السند.'); render(); }));
+    renderReceipt(p).then(function (b) {
+      blob = b; url = URL.createObjectURL(b); paper.innerHTML = ''; paper.appendChild(h('img', { src: url, alt: 'معاينة السند' }));
+      if (isNew && NATIVE) shareBlob(b, 'receipt-' + recNo(p) + '.png', 'image/png');
+    }).catch(function () { paper.textContent = 'تعذّر إنشاء صورة الوصل.'; });
+  }, { onclose: function () { /* object URLs are released with the page */ } });
+}
+function statementViewer(cu) {
+  openSheet(function (sh) {
+    var paper = h('div', { class: 'paper' }, h('p', { class: 'muted small', text: 'جارٍ التجهيز…' })), blob = null;
+    sh.appendChild(h('h2', { text: 'كشف حساب ' + cu.name }));
+    sh.appendChild(h('button', { class: 'btn block', type: 'button', text: 'مشاركة الكشف كصورة', onclick: function () { if (blob) shareBlob(blob, 'statement-' + today() + '.png', 'image/png'); } }));
+    sh.appendChild(paper);
+    var link = waLink(cu.phone, statementText(cu));
+    sh.appendChild(h('div', { class: 'btns' }, h('button', { class: 'btn soft sm', type: 'button', text: 'مشاركة كنص', onclick: function () { shareText(statementText(cu)); } }), link ? h('a', { class: 'btn soft sm', href: link, text: 'إرسال واتساب' }) : null));
+    renderStatement(cu).then(function (b) { blob = b; paper.innerHTML = ''; paper.appendChild(h('img', { src: URL.createObjectURL(b), alt: 'كشف الحساب' })); }).catch(function () { paper.textContent = 'تعذّر إنشاء الصورة.'; });
+  });
+}
+
+/* ---- pick a customer (for a payment started from the + button) ---- */
+function pickCustomer(cb) {
+  openSheet(function (sh, close) {
+    var q = inp({ placeholder: 'ابحث بالاسم أو الرقم', type: 'search' }), box = h('div', { class: 'list' });
+    function paint() {
+      var s = norm(q.value), n = 0; box.innerHTML = '';
+      activeCustomers().filter(function (c) { return !s || norm(c.name).indexOf(s) >= 0 || toEn(c.phone).replace(/\s/g, '').indexOf(s.replace(/\s/g, '')) >= 0; })
+        .sort(function (a, b) { return a.name.localeCompare(b.name, 'ar'); }).slice(0, 40).forEach(function (c) {
+          n++; var a = acct(c.id);
+          box.appendChild(h('div', { class: 'item', role: 'button', tabindex: '0', onclick: function () { close(); cb(c); } },
+            h('div', { class: 't' }, h('b', { text: c.name }), h('small', { class: 'num', text: c.phone })),
+            h('div', { class: 'a ' + (a.bal > 0.004 ? 'warn' : 'good'), text: a.bal > 0.004 ? money(a.bal) : '✓' })));
+        });
+      if (!n) box.appendChild(h('div', { class: 'empty', text: 'لا يوجد عميل بهذا الاسم.' }));
+    }
+    sh.appendChild(h('h2', { text: 'اختر العميل' })); sh.appendChild(q); sh.appendChild(box);
+    q.addEventListener('input', paint); paint();
+  });
+}
+
+/* ================= import (Excel / CSV), backup, restore ================= */
+function parseCsv(t) {
+  t = t.replace(/^﻿/, '');
+  var first = t.split(/\r?\n/)[0] || '', d = ',';
+  if ((first.match(/;/g) || []).length > (first.match(/,/g) || []).length) d = ';';
+  if (first.indexOf('\t') >= 0 && (first.match(/\t/g) || []).length >= (first.match(/,/g) || []).length) d = '\t';
+  var rows = [], row = [], cur = '', q = false;
+  for (var i = 0; i < t.length; i++) {
+    var ch = t[i];
+    if (q) { if (ch === '"') { if (t[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; }
+    else if (ch === '"') q = true;
+    else if (ch === d) { row.push(cur); cur = ''; }
+    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && t[i + 1] === '\n') i++; row.push(cur); cur = ''; rows.push(row); row = []; }
+    else cur += ch;
+  }
+  if (cur !== '' || row.length) { row.push(cur); rows.push(row); }
+  return rows.filter(function (r) { return r.some(function (c) { return String(c).trim() !== ''; }); });
+}
+function readRows(file) {
+  return new Promise(function (res, rej) {
+    var r = new FileReader(), nm = file.name.toLowerCase();
+    r.onerror = rej;
+    if (/\.(csv|txt)$/.test(nm)) { r.onload = function () { res(parseCsv(String(r.result))); }; r.readAsText(file, 'utf-8'); return; }
+    if (!window.XLSX) { rej(new Error('lib')); return; }
+    r.onload = function () {
+      try { var wb = XLSX.read(new Uint8Array(r.result), { type: 'array' }); res(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false, defval: '' })); }
+      catch (e) { rej(e); }
+    };
+    r.readAsArrayBuffer(file);
+  });
+}
+function importFile(file) {
+  readRows(file).then(function (aoa) {
+    var rows = aoa.map(function (r) { return r.map(function (c) { return String(c == null ? '' : c).trim(); }); }).filter(function (r) { return r.some(Boolean); });
+    if (rows.length < 2) { toast('الملف فارغ أو فيه سطر واحد فقط.', 4000); return; }
+    var head = rows[0], find = function (re, def) { for (var i = 0; i < head.length; i++) if (re.test(head[i])) return i; return def; };
+    var iName = find(/اسم|name|عميل|مشترك/i, 0), iPhone = find(/هاتف|جوال|موبايل|تلفون|رقم|phone|mobile|tel/i, 1), iBal = find(/رصيد|مبلغ|دين|متبقي|balance|amount|due/i, -1);
+    if (iPhone === iName) iPhone = iName === 0 ? 1 : 0;
+    openSheet(function (sh, close) {
+      var opt = function (withNone) {
+        var s = h('select'); if (withNone) s.appendChild(h('option', { value: '-1', text: 'بدون' }));
+        head.forEach(function (c, i) { s.appendChild(h('option', { value: String(i), text: c || ('عمود ' + (i + 1)) })); }); return s;
+      };
+      var sName = opt(false), sPhone = opt(true), sBal = opt(true); sName.value = String(iName); sPhone.value = String(iPhone); sBal.value = String(iBal);
+      var info = h('p', { class: 'muted small' });
+      sh.appendChild(h('h2', { text: 'استيراد العملاء' }));
+      sh.appendChild(h('p', { class: 'muted small', text: 'وجدت ' + (rows.length - 1) + ' سطراً. تأكد من الأعمدة:' }));
+      sh.appendChild(fld('عمود الاسم', sName)); sh.appendChild(fld('عمود الهاتف', sPhone)); sh.appendChild(fld('عمود الرصيد السابق (اختياري)', sBal)); sh.appendChild(info);
+      function plan() {
+        var seen = {}, ok = 0, dup = 0, bad = 0;
+        Object.keys(db.customers).forEach(function (k) { var kk = hKey(db.customers[k].phone); if (kk) seen[kk] = 1; });
+        var out = [];
+        rows.slice(1).forEach(function (r) {
+          var name = r[+sName.value] || '', ph = +sPhone.value >= 0 ? (r[+sPhone.value] || '') : '', k = hKey(ph);
+          if (!name) { bad++; return; }
+          if (k && seen[k]) { dup++; return; }
+          if (k) seen[k] = 1;
+          ok++; out.push({ name: name, phone: ph, bal: +sBal.value >= 0 ? parseAmt(r[+sBal.value]) : 0 });
+        });
+        info.textContent = 'سيُضاف ' + ok + ' عميل' + (dup ? ' • ' + dup + ' مكرر سيُتجاهل' : '') + (bad ? ' • ' + bad + ' سطر بلا اسم' : '');
+        return out;
+      }
+      [sName, sPhone, sBal].forEach(function (s) { s.addEventListener('change', plan); }); plan();
+      sh.appendChild(h('button', { class: 'btn block', type: 'button', text: 'استيراد', onclick: function () {
+        var list = plan(); if (!list.length) { toast('لا يوجد عملاء جدد لإضافتهم.'); return; }
+        list.forEach(function (x) { var c = addCustomer(x.name, x.phone, ''); if (x.bal > 0) addCharge(c.id, x.bal, today(), 'رصيد سابق', { kind: 'debt' }); });
+        close(); toast('تمت إضافة ' + list.length + ' عميل.', 4000); go('cust');
+      } }));
+    });
+  }).catch(function (e) { toast(e && e.message === 'lib' ? 'أداة قراءة الإكسل غير متاحة. جرّب ملف CSV.' : 'تعذّرت قراءة الملف.', 4500); });
+}
+function pickFile(accept, cb) {
+  var f = h('input', { type: 'file', accept: accept, hidden: true }); document.body.appendChild(f);
+  f.addEventListener('change', function () { if (f.files && f.files[0]) cb(f.files[0]); setTimeout(function () { f.remove(); }, 1000); });
+  f.click();
+}
+function backupBlob() { return new Blob([JSON.stringify({ app: 'ledger', v: 1, at: new Date().toISOString(), db: db })], { type: 'application/json' }); }
+async function doBackup(toDownloads) {
+  db.meta.lastBackup = Date.now(); flush();
+  var ok = await shareBlob(backupBlob(), 'ledger-backup-' + today() + '.json', 'application/json', !!toDownloads);
+  if (ok && !toDownloads) toast('اختر مكاناً آمناً للنسخة (واتساب، Drive، الملفات).', 4500);
+}
+function restoreFile(file) {
+  var r = new FileReader();
+  r.onload = function () {
+    var o = null; try { o = JSON.parse(String(r.result)); } catch (e) { o = null; }
+    if (!o || o.app !== 'ledger' || !o.db || typeof o.db.customers !== 'object') { toast('هذا الملف ليس نسخة احتياطية من دفتر الحسابات.', 4500); return; }
+    var n = Object.keys(o.db.customers).length, cur = Object.keys(db.customers).length;
+    openSheet(function (sh, close) {
+      sh.appendChild(h('h2', { text: 'استعادة نسخة احتياطية' }));
+      sh.appendChild(h('p', { text: 'النسخة فيها ' + n + ' عميل. ستحلّ محل البيانات الحالية (' + cur + ' عميل) ولا يمكن التراجع.' }));
+      sh.appendChild(armed(h('button', { class: 'btn danger block', type: 'button', text: 'استبدال البيانات بالنسخة' }), 'اضغط مرة أخرى للتأكيد', function () {
+        db = fixDb(o.db); dirty(); flush(); closeAll(); applyTheme(); toast('تمت الاستعادة.', 3500); go('home');
+      }));
+      sh.appendChild(h('button', { class: 'btn ghost block', type: 'button', text: 'إلغاء', onclick: close }));
+    });
+  };
+  r.onerror = function () { toast('تعذّرت قراءة الملف.'); };
+  r.readAsText(file, 'utf-8');
+}
+
+/* ================= screens ================= */
+var nav = { tab: 'home', stack: [] }, cf = { q: '', f: 'all', s: 'name' }, rp = { range: 'month' }, lastKey = '';
+var TABS = [['home', 'الرئيسية', 'home'], ['cust', 'العملاء', 'users'], ['rep', 'التقارير', 'chart'], ['set', 'الإعدادات', 'gear']];
+var TITLES = { home: 'دفتر الحسابات', cust: 'العملاء', rep: 'التقارير', set: 'الإعدادات' };
+function go(tab) { nav.tab = tab; nav.stack = []; render(); }
+function openCustomer(id) { nav.stack.push({ v: 'c', id: id, seg: 'ch' }); render(); }
+window.onBack = function () { if (closeTop()) return true; if (nav.stack.length) { nav.stack.pop(); render(); return true; } if (nav.tab !== 'home') { go('home'); return true; } return false; };
+function prevYm(m) { var p = m.split('-'), y = +p[0], mo = +p[1] - 1; if (mo < 1) { mo = 12; y--; } return y + '-' + pad(mo); }
+
+function avatar(c) {
+  var hue = 0, n = c.name || '؟';
+  for (var i = 0; i < n.length; i++) hue = (hue * 31 + n.charCodeAt(i)) % 360;
+  return h('div', { class: 'av', style: 'background:linear-gradient(135deg,hsl(' + hue + ' 55% 46%),hsl(' + ((hue + 30) % 360) + ' 55% 34%))', text: Array.from(n)[0] });
+}
+function balInfo(a) {
+  if (a.bal > 0.004) {
+    var late = a.overdue > 0.004;
+    return { cls: late ? 'bad' : 'warn', txt: money(a.bal), sub: late ? 'متأخر ' + a.maxLate + ' يوم' : (a.next ? 'يستحق ' + a.next.due : 'عليه') };
+  }
+  if (a.bal < -0.004) return { cls: 'info', txt: money(-a.bal), sub: 'رصيد له' };
+  return { cls: 'good', txt: a.total ? 'مسدّد' : '—', sub: a.total ? '✓' : 'لا مستحقات' };
+}
+function stat(cls, label, value, sub, fn) {
+  var s = h('div', { class: 'stat ' + cls, role: fn ? 'button' : null, tabindex: fn ? '0' : null }, h('small', { text: label }), h('b', { class: 'num', text: value }), h('i', { text: sub || '' }));
+  if (fn) s.addEventListener('click', fn); return s;
+}
+function chunked(box, items, make, first) {
+  var made = 0, io = null, more = null;
+  function fillTo(n) {
+    var fr = document.createDocumentFragment(); n = Math.min(n, items.length);
+    while (made < n) fr.appendChild(make(items[made++]));
+    if (more && more.parentNode) box.insertBefore(fr, more); else box.appendChild(fr);
+  }
+  fillTo(first || 40);
+  if (made < items.length) {
+    more = h('button', { class: 'btn ghost block more', type: 'button' });
+    var upd = function () { more.textContent = 'عرض المزيد (' + (items.length - made) + ')'; };
+    var load = function () { fillTo(made + 60); if (made >= items.length) { more.remove(); if (io) io.disconnect(); } else upd(); };
+    more.addEventListener('click', load); upd(); box.appendChild(more);
+    if (window.IntersectionObserver) { io = new IntersectionObserver(function (es) { if (es[0].isIntersecting) load(); }, { rootMargin: '600px' }); io.observe(more); }
+  }
+}
+// mode: 'late' shows the overdue amount, 'soon' the next instalment; both come with quick actions
+function custRow(c, mode) {
+  var withActs = !!mode, a = acct(c.id), b = balInfo(a), link = withActs ? waLink(c.phone, reminderText(c)) : '';
+  if (mode === 'late') b = { cls: 'bad', txt: money(a.overdue), sub: 'متأخر ' + a.maxLate + ' يوم' };
+  else if (mode === 'soon' && a.next) b = { cls: 'warn', txt: money(a.nextLeft), sub: 'يستحق ' + a.next.due };
+  var row = h('div', { class: 'row' + (withActs ? ' wrap' : ''), role: 'button', tabindex: '0', onclick: function () { openCustomer(c.id); } },
+    avatar(c), h('div', { class: 'main-t' }, h('b', { text: c.name }), h('small', { class: 'num', text: c.phone || ' ' })),
+    h('div', { class: 'amt ' + b.cls }, h('span', { class: 'num', text: b.txt }), h('small', { text: b.sub })));
+  if (withActs) {
+    var acts = h('div', { class: 'acts' });
+    acts.addEventListener('click', function (e) { e.stopPropagation(); });
+    if (link) acts.appendChild(h('a', { class: 'chipbtn wa', href: link, 'aria-label': 'تذكير واتساب' }, ic('wa')));
+    if (c.phone) acts.appendChild(h('a', { class: 'chipbtn', href: 'tel:' + toEn(c.phone).replace(/[^\d+]/g, ''), 'aria-label': 'اتصال' }, ic('phone')));
+    acts.appendChild(h('button', { class: 'pay', type: 'button', 'aria-label': 'تسديد', onclick: function () { payForm(c.id, a.overdue > 0.004 ? a.overdue : (a.bal > 0.004 ? a.bal : 0)); } }, ic('receipt')));
+    row.appendChild(acts);
+  }
+  return row;
+}
+function payRow(p, showName) {
+  var c = db.customers[p.cid];
+  return h('div', { class: 'item' + (p.void ? ' void' : ''), role: 'button', tabindex: '0', onclick: function () { receiptViewer(p, false); } },
+    ic('receipt'), h('div', { class: 't' }, h('b', { text: showName ? (c ? c.name : '—') : 'سند ' + recNo(p) }), h('small', { class: 'num', text: '#' + recNo(p) + ' • ' + p.d + ' ' + hm(p.ts) + ' • ' + methodName(p.m) })),
+    h('div', { class: 'a good' }, h('span', { class: 'num', text: money(p.amt) }), p.void ? h('small', { text: 'ملغى' }) : null));
+}
+
+/* ---- home ---- */
+function greeting() { return new Date().getHours() < 12 ? 'صباح الخير' : 'مساء الخير'; }
+function viewHome() {
+  var root = h('div', { class: 'stack' }), t = totals(), cs = activeCustomers(), td = today();
+  root.appendChild(h('div', { class: 'hello' }, h('b', { text: greeting() }), h('span', { text: new Date().toLocaleDateString('ar-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'long' }) })));
+  if (!cs.length) {
+    root.appendChild(h('div', { class: 'card empty' }, h('b', { text: 'ابدأ بإضافة عملائك' }), h('p', { text: 'أضف عميلاً، أو استورد قائمة من ملف إكسل، ثم سجّل مستحقاته وتسديداته وأصدر الوصولات.' }),
+      h('div', { class: 'btns' }, h('button', { class: 'btn', type: 'button', text: 'عميل جديد', onclick: function () { customerForm(null, function (c) { openCustomer(c.id); }); } }),
+        h('button', { class: 'btn soft', type: 'button', text: 'استيراد من ملف', onclick: function () { pickFile('.xlsx,.xls,.csv,.txt', importFile); } }))));
+    return root;
+  }
+  root.appendChild(h('div', { class: 'stats' },
+    stat('brand', 'المحصَّل اليوم', money(t.today) + curTxt(), t.todayN + ' سند', function () { rp.range = 'today'; go('rep'); }),
+    stat('good', 'المحصَّل هذا الشهر', money(t.month) + curTxt(), '', function () { rp.range = 'month'; go('rep'); }),
+    stat('warn', 'إجمالي المستحق', money(t.out) + curTxt(), t.owingN + ' عميل', function () { cf.f = 'owing'; go('cust'); }),
+    stat('bad', 'المتأخر', money(t.overdue) + curTxt(), t.lateN + ' عميل', function () { cf.f = 'late'; go('cust'); })));
+  if (cs.length >= 3 && Date.now() - (db.meta.lastBackup || 0) > 7 * 86400000) {
+    root.appendChild(h('div', { class: 'note' }, h('span', { text: db.meta.lastBackup ? 'مرّ أكثر من أسبوع على آخر نسخة احتياطية.' : 'لم تأخذ نسخة احتياطية بعد. بياناتك على هذا الهاتف فقط.' }),
+      h('button', { class: 'btn sm', type: 'button', text: 'نسخة الآن', onclick: function () { doBackup(false).then(render); } })));
+  }
+  var late = cs.filter(function (c) { return acct(c.id).overdue > 0.004; }).sort(function (a, b) { return acct(b.id).overdue - acct(a.id).overdue; });
+  var lw = h('div'); lw.appendChild(h('div', { class: 'sec-h' }, h('span', { text: 'المتأخرون' }), late.length > 6 ? h('button', { class: 'link', type: 'button', text: 'عرض الكل (' + late.length + ')', onclick: function () { cf.f = 'late'; go('cust'); } }) : null));
+  var ll = h('div', { class: 'list' });
+  if (late.length) late.slice(0, 6).forEach(function (c) { ll.appendChild(custRow(c, 'late')); }); else ll.appendChild(h('div', { class: 'card empty', text: 'لا يوجد متأخرون. 👏' }));
+  lw.appendChild(ll); root.appendChild(lw);
+  var soon = cs.filter(function (c) { var a = acct(c.id); return a.overdue < 0.004 && a.next && a.next.due >= td && dayDiff(a.next.due, td) <= 7; })
+    .sort(function (a, b) { return acct(a.id).next.due < acct(b.id).next.due ? -1 : 1; });
+  if (soon.length) { var sw = h('div'), sl = h('div', { class: 'list' }); sw.appendChild(h('div', { class: 'sec-h' }, h('span', { text: 'يستحق خلال 7 أيام' }))); soon.slice(0, 5).forEach(function (c) { sl.appendChild(custRow(c, 'soon')); }); sw.appendChild(sl); root.appendChild(sw); }
+  var rec = db.pays.filter(function (p) { return !p.void; }).sort(function (a, b) { return b.ts - a.ts; }).slice(0, 5);
+  if (rec.length) { var rw = h('div'), rl = h('div', { class: 'list' }); rw.appendChild(h('div', { class: 'sec-h' }, h('span', { text: 'آخر التسديدات' }), h('button', { class: 'link', type: 'button', text: 'كل السندات', onclick: function () { rp.range = 'all'; go('rep'); } }))); rec.forEach(function (p) { rl.appendChild(payRow(p, true)); }); rw.appendChild(rl); root.appendChild(rw); }
+  return root;
+}
+
+/* ---- customers ---- */
+function viewCustomers() {
+  var root = h('div', { class: 'stack' }), box = h('div', { class: 'list' }), chipsBox = h('div', { class: 'chips' });
+  var q = inp({ type: 'search', placeholder: 'ابحث بالاسم أو الرقم', value: cf.q });
+  var sortSel = h('select', { 'aria-label': 'الترتيب' }, h('option', { value: 'name', text: 'الاسم' }), h('option', { value: 'bal', text: 'الأكبر مبلغاً' }), h('option', { value: 'due', text: 'الأقدم استحقاقاً' }));
+  sortSel.value = cf.s;
+  function paint() {
+    var s = norm(cf.q), all = activeCustomers().map(function (c) { return { c: c, a: acct(c.id) }; });
+    var cnt = { all: all.length, late: 0, owing: 0, clear: 0 };
+    all.forEach(function (x) { if (x.a.overdue > 0.004) cnt.late++; if (x.a.bal > 0.004) cnt.owing++; else cnt.clear++; });
+    chipsBox.innerHTML = '';
+    [['all', 'الكل'], ['late', 'متأخر'], ['owing', 'عليه رصيد'], ['clear', 'مسدّد']].forEach(function (f) {
+      chipsBox.appendChild(h('button', { class: 'chip', type: 'button', 'aria-pressed': cf.f === f[0] ? 'true' : 'false', onclick: function () { cf.f = f[0]; paint(); } }, f[1], h('b', { text: String(cnt[f[0]]) })));
+    });
+    var list = all.filter(function (x) {
+      if (cf.f === 'late' && !(x.a.overdue > 0.004)) return false;
+      if (cf.f === 'owing' && !(x.a.bal > 0.004)) return false;
+      if (cf.f === 'clear' && x.a.bal > 0.004) return false;
+      return !s || norm(x.c.name).indexOf(s) >= 0 || toEn(x.c.phone).replace(/\s/g, '').indexOf(s.replace(/\s/g, '')) >= 0;
+    });
+    if (cf.s === 'bal') list.sort(function (a, b) { return b.a.bal - a.a.bal; });
+    else if (cf.s === 'due') list.sort(function (a, b) { var x = a.a.next ? a.a.next.due : '9999', y = b.a.next ? b.a.next.due : '9999'; return x < y ? -1 : x > y ? 1 : 0; });
+    else list.sort(function (a, b) { return a.c.name.localeCompare(b.c.name, 'ar'); });
+    box.innerHTML = '';
+    if (!list.length) box.appendChild(h('div', { class: 'empty' }, h('b', { text: all.length ? 'لا نتائج' : 'لا يوجد عملاء بعد' }), all.length ? 'جرّب بحثاً آخر أو فلتراً مختلفاً.' : 'اضغط + لإضافة أول عميل.'));
+    else chunked(box, list, function (x) { return custRow(x.c, false); }, 40);
+  }
+  q.addEventListener('input', function () { cf.q = q.value; paint(); });
+  sortSel.addEventListener('change', function () { cf.s = sortSel.value; paint(); });
+  root.appendChild(h('div', { class: 'tools' }, h('div', { class: 'search' }, ic('search'), q), chipsBox,
+    h('div', { class: 'two' }, h('label', { class: 'fld' }, sortSel), h('button', { class: 'btn soft', type: 'button', text: 'استيراد من ملف', onclick: function () { pickFile('.xlsx,.xls,.csv,.txt', importFile); } }))));
+  root.appendChild(box); paint();
+  return root;
+}
+
+/* ---- one customer ---- */
+function viewCustomer(c, st) {
+  var a = acct(c.id), b = balInfo(a), root = h('div', { class: 'stack' }), link = waLink(c.phone, reminderText(c));
+  var hero = h('div', { class: 'card hero' },
+    h('div', { class: 'who' }, avatar(c), h('div', null, h('b', { text: c.name }), h('div', { class: 'muted small num', text: c.phone || 'بدون رقم' }))),
+    h('div', { class: 'bal ' + b.cls }, h('span', { text: a.bal >= -0.004 ? 'المتبقي عليه' : 'رصيد له' }), h('b', { class: 'num', text: a.total ? money(Math.abs(a.bal)) + curTxt() : '—' })),
+    h('div', { class: 'kv' }, h('span', { text: 'إجمالي المستحقات' }), h('b', { class: 'num', text: money(a.total) })),
+    h('div', { class: 'kv' }, h('span', { text: 'إجمالي المسدَّد' }), h('b', { class: 'num good', text: money(a.paid) })),
+    a.overdue > 0.004 ? h('div', { class: 'kv' }, h('span', { text: 'منه متأخر' }), h('b', { class: 'num bad', text: money(a.overdue) + ' • ' + a.maxLate + ' يوم' })) : null,
+    a.next ? h('div', { class: 'kv' }, h('span', { text: 'الاستحقاق القادم' }), h('b', { class: 'num', text: a.next.due })) : null,
+    c.note ? h('p', { class: 'muted small', text: c.note }) : null);
+  root.appendChild(hero);
+  root.appendChild(h('div', { class: 'btns' },
+    h('button', { class: 'btn', type: 'button', onclick: function () { payForm(c.id, a.overdue > 0.004 ? a.overdue : (a.bal > 0.004 ? a.bal : 0)); } }, ic('receipt'), 'تسديد'),
+    h('button', { class: 'btn soft', type: 'button', onclick: function () { chargeForm(c.id); } }, ic('plus'), 'مستحق جديد'),
+    link ? h('a', { class: 'btn soft', href: link }, ic('wa'), 'تذكير واتساب') : null,
+    h('button', { class: 'btn soft', type: 'button', onclick: function () { statementViewer(c); } }, ic('share'), 'كشف حساب'),
+    c.phone ? h('a', { class: 'btn soft', href: 'tel:' + toEn(c.phone).replace(/[^\d+]/g, '') }, ic('phone'), 'اتصال') : null,
+    h('button', { class: 'btn ghost', type: 'button', onclick: function () { customerForm(c); } }, ic('edit'), 'تعديل')));
+  var ix = ensure(), allPays = db.pays.filter(function (p) { return p.cid === c.id; }).sort(function (x, y) { return y.ts - x.ts; });
+  var subs = db.subs.filter(function (s) { return s.cid === c.id; });
+  root.appendChild(seg([['ch', 'المستحقات (' + a.items.length + ')'], ['py', 'التسديدات (' + allPays.length + ')'], ['sb', 'الاشتراكات (' + subs.length + ')']], st.seg, function (v) { st.seg = v; fillTab(); }));
+  var tab = h('div', { class: 'list' }); root.appendChild(tab);
+  function fillTab() {
+    tab.innerHTML = '';
+    if (st.seg === 'ch') {
+      if (!a.items.length) tab.appendChild(h('div', { class: 'empty' }, h('b', { text: 'لا مستحقات' }), 'أضف دَيناً أو أقساطاً أو اشتراكاً شهرياً.'));
+      var items = a.items.slice().sort(function (x, y) { return x.c.due < y.c.due ? 1 : x.c.due > y.c.due ? -1 : y.c.id - x.c.id; });
+      chunked(tab, items, function (it) {
+        var pill = it.status === 'paid' ? h('span', { class: 'pill good', text: 'مسدّد' }) : it.status === 'part' ? h('span', { class: 'pill info', text: 'جزئي' }) : it.status === 'late' ? h('span', { class: 'pill bad', text: 'متأخر ' + dayDiff(today(), it.c.due) + ' يوم' }) : h('span', { class: 'pill warn', text: 'غير مسدّد' });
+        var el = h('div', { class: 'item', role: 'button', tabindex: '0', onclick: function () { chargeSheet(it); } },
+          h('div', { class: 't' }, h('b', { text: it.c.desc || 'مستحق' }), h('small', { class: 'num', text: 'الاستحقاق ' + it.c.due }),
+            it.status === 'part' ? h('div', { class: 'bar-prog' }, h('i', { style: 'width:' + Math.round(it.paid / it.c.amt * 100) + '%' })) : null),
+          h('div', { class: 'a' }, h('span', { class: 'num', text: money(it.c.amt) }), h('small', null, pill)));
+        return el;
+      }, 30);
+    } else if (st.seg === 'py') {
+      if (!allPays.length) tab.appendChild(h('div', { class: 'empty' }, h('b', { text: 'لا تسديدات بعد' }), 'اضغط «تسديد» لإصدار أول سند.'));
+      chunked(tab, allPays, function (p) { return payRow(p, false); }, 30);
+    } else {
+      if (!subs.length) tab.appendChild(h('div', { class: 'empty' }, h('b', { text: 'لا اشتراكات' }), 'أضف اشتراكاً شهرياً من «مستحق جديد».'));
+      subs.forEach(function (s) {
+        var tg = h('button', { class: 'btn soft sm', type: 'button', text: s.active ? 'إيقاف' : 'استئناف', onclick: function () {
+          s.active = s.active ? 0 : 1;
+          if (s.active) { var cm = ymOf(today()), pv = prevYm(cm); if (!s.last || s.last < pv) s.last = pv; genSubs(); }
+          dirty(); render();
+        } });
+        var dl = armed(h('button', { class: 'btn danger sm', type: 'button', text: 'حذف' }), 'تأكيد؟', function () { db.subs = db.subs.filter(function (x) { return x !== s; }); dirty(); render(); });
+        tab.appendChild(h('div', { class: 'card' }, h('div', { class: 'kv' }, h('b', { text: s.desc || 'اشتراك شهري' }), h('span', { class: 'pill ' + (s.active ? 'good' : ''), text: s.active ? 'فعّال' : 'موقوف' })),
+          h('div', { class: 'kv' }, h('span', { text: 'كل شهر يوم ' + s.day }), h('b', { class: 'num', text: money(s.amt) + curTxt() })), h('div', { class: 'btns' }, tg, dl)));
+      });
+    }
+  }
+  fillTab();
+  return root;
+}
+
+/* ---- reports ---- */
+function rangeOf(v) {
+  var td = today(), mo = ymOf(td);
+  if (v === 'today') return [td, td];
+  if (v === 'yday') { var y = addDays(td, -1); return [y, y]; }
+  if (v === 'w7') return [addDays(td, -6), td];
+  if (v === 'month') return [mo + '-01', mo + '-31'];
+  if (v === 'lmonth') { var pm = prevYm(mo); return [pm + '-01', pm + '-31']; }
+  return ['0000-00-00', '9999-99-99'];
+}
+function viewReports() {
+  var root = h('div', { class: 'stack' }), r = rangeOf(rp.range);
+  var pays = db.pays.filter(function (p) { return !p.void && p.d >= r[0] && p.d <= r[1]; }).sort(function (a, b) { return b.ts - a.ts; });
+  var charges = db.charges.filter(function (c) { return !c.void && c.date >= r[0] && c.date <= r[1]; });
+  var sum = 0, byM = { cash: 0, transfer: 0, other: 0 }, byD = {}, issued = 0;
+  pays.forEach(function (p) { sum += p.amt; byM[p.m] = (byM[p.m] || 0) + p.amt; byD[p.d] = (byD[p.d] || 0) + p.amt; });
+  charges.forEach(function (c) { issued += c.amt; });
+  var sel = h('select', { 'aria-label': 'الفترة' }); [['today', 'اليوم'], ['yday', 'أمس'], ['w7', 'آخر 7 أيام'], ['month', 'هذا الشهر'], ['lmonth', 'الشهر الماضي'], ['all', 'كل السجلات']].forEach(function (o) { sel.appendChild(h('option', { value: o[0], text: o[1] })); });
+  sel.value = rp.range; sel.addEventListener('change', function () { rp.range = sel.value; render(); });
+  root.appendChild(h('label', { class: 'fld' }, h('span', { text: 'الفترة' }), sel));
+  root.appendChild(h('div', { class: 'stats' }, stat('brand', 'المحصَّل', money(r2(sum)) + curTxt(), pays.length + ' سند'), stat('warn', 'مستحقات صدرت', money(r2(issued)) + curTxt(), charges.length + ' مستحق')));
+  var days = Object.keys(byD).sort();
+  if (days.length > 1 && days.length <= 62) {
+    var mx = Math.max.apply(null, days.map(function (d) { return byD[d]; }));
+    root.appendChild(h('div', { class: 'card' }, h('h2', { text: 'التحصيل اليومي' }), h('div', { class: 'bars' }, days.map(function (d) { return h('i', { style: 'height:' + Math.max(4, Math.round(byD[d] / mx * 100)) + '%', title: d + ': ' + money(byD[d]) }); })),
+      h('div', { class: 'bars-l' }, h('span', { class: 'num', text: days[0].slice(5) }), h('span', { class: 'num', text: days[days.length - 1].slice(5) }))));
+  }
+  root.appendChild(h('div', { class: 'card' }, h('h2', { text: 'حسب طريقة الدفع' }),
+    ['cash', 'transfer', 'other'].map(function (m) { return h('div', { class: 'kv' }, h('span', { text: methodName(m) }), h('b', { class: 'num', text: money(r2(byM[m] || 0)) + curTxt() })); })));
+  // how old the unpaid amounts are, across all customers
+  var ag = [0, 0, 0, 0], td = today();
+  activeCustomers().forEach(function (c) { acct(c.id).items.forEach(function (it) { if (!it.late) return; var d = dayDiff(td, it.c.due); ag[d <= 30 ? 0 : d <= 60 ? 1 : d <= 90 ? 2 : 3] += it.left; }); });
+  root.appendChild(h('div', { class: 'card' }, h('h2', { text: 'أعمار المتأخرات' }),
+    [['1 - 30 يوماً', 0], ['31 - 60 يوماً', 1], ['61 - 90 يوماً', 2], ['أكثر من 90 يوماً', 3]].map(function (x) { return h('div', { class: 'kv' }, h('span', { text: x[0] }), h('b', { class: 'num ' + (ag[x[1]] > 0.004 ? 'bad' : ''), text: money(r2(ag[x[1]])) + curTxt() })); })));
+  var sl = h('div'), pl = h('div', { class: 'list' });
+  sl.appendChild(h('div', { class: 'sec-h' }, h('span', { text: 'السندات (' + pays.length + ')' })));
+  if (!pays.length) pl.appendChild(h('div', { class: 'card empty', text: 'لا سندات في هذه الفترة.' })); else chunked(pl, pays, function (p) { return payRow(p, true); }, 30);
+  sl.appendChild(pl); root.appendChild(sl);
+  root.appendChild(h('div', { class: 'btns' },
+    h('button', { class: 'btn soft', type: 'button', text: 'تصدير السندات (CSV)', onclick: function () {
+      var rows = [['رقم السند', 'التاريخ', 'الوقت', 'العميل', 'الهاتف', 'المبلغ', 'طريقة الدفع', 'ملاحظة']];
+      pays.slice().reverse().forEach(function (p) { var c = db.customers[p.cid] || {}; rows.push([recNo(p), p.d, hm(p.ts), c.name || '', c.phone || '', p.amt, methodName(p.m), p.t || '']); });
+      shareBlob(csvBlob(rows), 'receipts-' + today() + '.csv', 'text/csv');
+    } }),
+    h('button', { class: 'btn soft', type: 'button', text: 'تصدير أرصدة العملاء (CSV)', onclick: function () {
+      var rows = [['الاسم', 'الهاتف', 'إجمالي المستحقات', 'المسدَّد', 'المتبقي', 'المتأخر', 'الاستحقاق القادم']];
+      activeCustomers().sort(function (a, b) { return a.name.localeCompare(b.name, 'ar'); }).forEach(function (c) { var a = acct(c.id); rows.push([c.name, c.phone, a.total, a.paid, a.bal, a.overdue, a.next ? a.next.due : '']); });
+      shareBlob(csvBlob(rows), 'balances-' + today() + '.csv', 'text/csv');
+    } })));
+  return root;
+}
+
+/* ---- settings ---- */
+function applyTheme() {
+  var t = db.cfg.theme || 'auto';
+  if (t === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', t);
+  var dark = t === 'dark' || (t === 'auto' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+  try { if (NATIVE && window.Android.setBars) window.Android.setBars(dark); } catch (e) {}
+}
+function viewSettings() {
+  var root = h('div', { class: 'stack' });
+  function field(label, key, attrs, hint) {
+    var i = h('input', Object.assign({ type: 'text', autocomplete: 'off', value: db.cfg[key] || '' }, attrs || {}));
+    i.addEventListener('change', function () { db.cfg[key] = i.value.trim(); dirty(); });
+    return h('label', { class: 'fld' }, h('span', { text: label }), i, hint ? h('small', { class: 'muted', text: hint }) : null);
+  }
+  var pw = h('select'); [['384', '58 ملم (384 نقطة)'], ['576', '80 ملم (576 نقطة)']].forEach(function (o) { pw.appendChild(h('option', { value: o[0], text: o[1] })); });
+  pw.value = String(db.cfg.pw || 384); pw.addEventListener('change', function () { db.cfg.pw = +pw.value; dirty(); });
+  var tpl = h('textarea'); tpl.value = db.cfg.tpl || DEF_TPL; tpl.addEventListener('change', function () { db.cfg.tpl = tpl.value.trim() || DEF_TPL; dirty(); });
+  root.appendChild(h('div', { class: 'card list' }, h('h2', { text: 'بيانات المحل والوصل' }),
+    field('اسم المحل أو الشركة', 'shop', { placeholder: 'يظهر أعلى الوصل' }), field('هاتف الوصل', 'shopph', { inputmode: 'tel' }), field('اسم العملة', 'curr', { placeholder: 'مثال: دينار' }),
+    field('السطر الأخير في الوصل', 'foot'), field('بادئة رقم السند', 'pre', { placeholder: 'اختياري، مثل A-' }), h('label', { class: 'fld' }, h('span', { text: 'عرض الورق' }), pw)));
+  root.appendChild(h('div', { class: 'card list' }, h('h2', { text: 'رسائل واتساب' }),
+    field('رمز الدولة', 'cc', { inputmode: 'numeric', placeholder: 'مثل 964 أو 966' }, 'يُضاف للأرقام التي تبدأ بصفر.'),
+    h('label', { class: 'fld' }, h('span', { text: 'نص التذكير' }), tpl, h('small', { class: 'muted', text: 'المتغيرات: {الاسم} {المبلغ} {العملة} {التاريخ} {المحل}' }))));
+  root.appendChild(h('div', { class: 'card list' }, h('h2', { text: 'المظهر' }),
+    seg([['auto', 'تلقائي'], ['light', 'فاتح'], ['dark', 'داكن']], db.cfg.theme || 'auto', function (v) { db.cfg.theme = v; dirty(); applyTheme(); })));
+  var bk = db.meta.lastBackup ? 'آخر نسخة: ' + new Date(db.meta.lastBackup).toLocaleDateString('ar-u-nu-latn') : 'لم تؤخذ نسخة بعد';
+  root.appendChild(h('div', { class: 'card list' }, h('h2', { text: 'البيانات' }), h('p', { class: 'muted small', text: bk + '. بياناتك على هذا الهاتف فقط ولا تُرسل لأي جهة. خذ نسخة احتياطية بانتظام.' }),
+    h('div', { class: 'btns' },
+      h('button', { class: 'btn', type: 'button', text: 'نسخة احتياطية (مشاركة)', onclick: function () { doBackup(false).then(render); } }),
+      NATIVE ? h('button', { class: 'btn soft', type: 'button', text: 'حفظ نسخة في التنزيلات', onclick: function () { doBackup(true).then(render); } }) : null,
+      h('button', { class: 'btn soft', type: 'button', text: 'استعادة نسخة', onclick: function () { pickFile('.json,application/json', restoreFile); } }),
+      h('button', { class: 'btn soft', type: 'button', text: 'استيراد عملاء من ملف', onclick: function () { pickFile('.xlsx,.xls,.csv,.txt', importFile); } })),
+    armed(h('button', { class: 'btn danger block', type: 'button', text: 'حذف كل البيانات' }), 'اضغط مرة أخرى لحذف كل شيء', function () { db = blank(); applyTheme(); dirty(); flush(); toast('تم حذف كل البيانات.'); go('home'); })));
+  root.appendChild(h('p', { class: 'muted small', text: 'دفتر الحسابات 1.0 • يعمل بدون إنترنت' }));
+  return root;
+}
+
+/* ---- shell: title bar, tabs, + button ---- */
+function buildNav() {
+  var n = $('nav'); n.innerHTML = '';
+  TABS.forEach(function (t) { n.appendChild(h('button', { type: 'button', 'data-tab': t[0], onclick: function () { closeAll(); go(t[0]); } }, h('span', { class: 'ic' }, ic(t[2])), t[1])); });
+  $('bk').appendChild(ic('back')); $('bk').addEventListener('click', function () { window.onBack(); });
+  $('fab').appendChild(ic('plus', 'lg'));
+  $('fab').addEventListener('click', function () {
+    var cur = nav.stack[nav.stack.length - 1];
+    if (cur && cur.v === 'c') { var a = acct(cur.id); payForm(cur.id, a.overdue > 0.004 ? a.overdue : (a.bal > 0.004 ? a.bal : 0)); return; }
+    openSheet(function (sh, close) {
+      sh.appendChild(h('h2', { text: 'إضافة' }));
+      sh.appendChild(h('button', { class: 'btn block', type: 'button', onclick: function () { close(); if (!activeCustomers().length) { toast('أضف عميلاً أولاً.'); customerForm(null); return; } pickCustomer(function (c) { payForm(c.id); }); } }, ic('receipt'), 'تسديد جديد'));
+      sh.appendChild(h('button', { class: 'btn soft block', type: 'button', onclick: function () { close(); customerForm(null, function (c) { openCustomer(c.id); }); } }, ic('user'), 'عميل جديد'));
+      sh.appendChild(h('button', { class: 'btn soft block', type: 'button', onclick: function () { close(); pickFile('.xlsx,.xls,.csv,.txt', importFile); } }, ic('upload'), 'استيراد عملاء من ملف'));
+    });
+  });
+}
+function render() {
+  var cur = nav.stack[nav.stack.length - 1], main = $('main'), key = cur ? 'c' + cur.id : nav.tab, keep = key === lastKey ? main.scrollTop : 0;
+  if (cur && (!db.customers[cur.id] || db.customers[cur.id].arch)) { nav.stack.pop(); return render(); }
+  main.innerHTML = '';
+  var title = cur ? db.customers[cur.id].name : TITLES[nav.tab];
+  main.appendChild(cur ? viewCustomer(db.customers[cur.id], cur) : nav.tab === 'home' ? viewHome() : nav.tab === 'cust' ? viewCustomers() : nav.tab === 'rep' ? viewReports() : viewSettings());
+  $('ttl').textContent = title; $('bk').hidden = !cur;
+  Array.prototype.forEach.call($('nav').children, function (b) { if (b.getAttribute('data-tab') === nav.tab) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
+  $('fab').hidden = (nav.tab === 'set' || nav.tab === 'rep') && !cur;
+  main.scrollTop = keep; lastKey = key;
+}
+
+/* ================= start ================= */
+var lastDay = '';
+function tick() {
+  var d = today();
+  if (d !== lastDay) { lastDay = d; genSubs(); if (!sheets.length) render(); }
+}
+load().then(function () {
+  lastDay = today(); genSubs(); applyTheme(); buildNav(); render();
+  setInterval(tick, 600000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) tick(); });
+  window.__ledger = { get db() { return db; }, acct: acct, render: render, go: go, addPayment: addPayment, genSubs: genSubs, flush: flush };
+});
+})();
+</script>
+</body>
+</html>

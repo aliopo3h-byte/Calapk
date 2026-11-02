@@ -1,0 +1,52 @@
+name: Build Ledger APK
+on:
+  push:
+    branches: [ main, claude/quirky-mayer-36k5g4 ]   # the second branch is temporary, to check the build before merging
+    paths:
+      - 'ledger/**'
+      - '.github/workflows/build-ledger.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Bundle the Excel library
+        working-directory: ledger
+        run: |
+          mkdir -p app/src/main/assets/lib
+          curl -fsSL https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js -o app/src/main/assets/lib/xlsx.full.min.js
+          sed -i 's#https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js#lib/xlsx.full.min.js#' app/src/main/assets/index.html
+      - name: Restore the signing key (only when the secrets exist)
+        env:
+          KEYSTORE_B64: ${{ secrets.LEDGER_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > ledger/app/ledger.p12
+            echo "Signing with the permanent key."
+          else
+            echo "No signing secret found: this build uses a temporary key."
+          fi
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Build
+        working-directory: ledger
+        env:
+          LEDGER_KEY_PASSWORD: ${{ secrets.LEDGER_KEY_PASSWORD }}
+        run: gradle assembleRelease --no-daemon
+      - name: Name the APK
+        run: |
+          mv ledger/app/build/outputs/apk/release/app-release.apk ledger/app/build/outputs/apk/release/DaftarAlHisabat.apk
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ledger-latest
+          name: دفتر الحسابات (latest)
+          make_latest: false
+          files: ledger/app/build/outputs/apk/release/DaftarAlHisabat.apk

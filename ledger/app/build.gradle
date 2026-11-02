@@ -1,0 +1,60 @@
+plugins {
+    id 'com.android.application'
+}
+
+// The signing key and its password are never stored in the repository: the workflow restores
+// the key from the LEDGER_KEYSTORE_B64 secret and the password from LEDGER_KEY_PASSWORD.
+// Without them the build is signed with a temporary debug key (fine for a test, but it cannot
+// be updated in place because every build gets a different key).
+def keyPw = System.getenv('LEDGER_KEY_PASSWORD')
+def canSign = keyPw && file('ledger.p12').exists()
+
+android {
+    namespace 'com.ledgerbook.app'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.ledgerbook.app'
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName '1.0'
+    }
+
+    signingConfigs {
+        debug {
+            enableV1Signing = true
+            enableV2Signing = true
+        }
+        release {
+            if (canSign) {
+                storeFile file('ledger.p12')
+                storePassword keyPw
+                keyAlias 'ledger'
+                keyPassword keyPw
+                storeType 'pkcs12'
+            }
+            enableV1Signing = true
+            enableV2Signing = true
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig canSign ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core:1.13.1'
+    implementation 'androidx.webkit:webkit:1.11.0'
+}
