@@ -1,7 +1,7 @@
 name: Build Ledger APK
 on:
   push:
-    branches: [ main ]
+    branches: [ main, claude/quirky-mayer-36k5g4 ]   # the second branch is temporary, to check the build before merging
     paths:
       - 'ledger/**'
       - '.github/workflows/build-ledger.yml'
