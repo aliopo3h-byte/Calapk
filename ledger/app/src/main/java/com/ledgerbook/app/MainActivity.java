@@ -1,8 +1,10 @@
 package com.ledgerbook.app;
 
+import android.Manifest;
 import android.app.Activity;
 import android.content.ContentValues;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.net.Uri;
 import android.os.Build;
@@ -24,17 +26,20 @@ import android.webkit.WebViewClient;
 import androidx.core.content.FileProvider;
 import androidx.webkit.WebViewAssetLoader;
 
+import org.json.JSONObject;
+
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.OutputStream;
 
 /** يعرض صفحة التطبيق (assets/index.html) ويوفّر لها الحفظ والمشاركة والرجوع. */
 public class MainActivity extends Activity {
-    private static final int REQ_FILE = 21;
+    private static final int REQ_FILE = 21, REQ_BLE = 22;
     private static final String HOME = "https://appassets.androidplatform.net/assets/index.html";
 
     private WebView web;
     private ValueCallback<Uri[]> chooser;
+    private BlePrinter ble;
 
     @Override
     protected void onCreate(Bundle b) {
@@ -96,6 +101,7 @@ public class MainActivity extends Activity {
             }
         });
 
+        ble = new BlePrinter(this);
         web.addJavascriptInterface(new Bridge(), "Android");
         web.loadUrl(HOME);
     }
@@ -106,6 +112,43 @@ public class MainActivity extends Activity {
         if (req == REQ_FILE && chooser != null) {
             chooser.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(res, data));
             chooser = null;
+        }
+    }
+
+    private void js(final String code) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                if (web != null) web.evaluateJavascript(code, null);
+            }
+        });
+    }
+
+    /** الأذونات اللازمة: على أندرويد 12 فأحدث «الأجهزة القريبة»، وقبله الموقع للبحث فقط. */
+    private String[] blePerms(boolean scan) {
+        if (Build.VERSION.SDK_INT >= 31) {
+            return new String[]{Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT};
+        }
+        if (scan) return new String[]{Manifest.permission.ACCESS_FINE_LOCATION};
+        return new String[0];
+    }
+
+    private boolean hasAll(String[] perms) {
+        for (String p : perms) {
+            if (checkSelfPermission(p) != PackageManager.PERMISSION_GRANTED) return false;
+        }
+        return true;
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int req, String[] perms, int[] res) {
+        super.onRequestPermissionsResult(req, perms, res);
+        if (req == REQ_BLE) {
+            boolean ok = res.length > 0;
+            for (int r : res) {
+                if (r != PackageManager.PERMISSION_GRANTED) ok = false;
+            }
+            js("window.onBlePerm && onBlePerm(" + ok + ")");
         }
     }
 
@@ -126,6 +169,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (ble != null) ble.stopScan();
         if (web != null) web.destroy();
         super.onDestroy();
     }
@@ -177,6 +221,69 @@ public class MainActivity extends Activity {
                 i.setType("text/plain");
                 i.putExtra(Intent.EXTRA_TEXT, t);
                 startActivity(Intent.createChooser(i, null));
+            });
+        }
+
+        /** 0 = جاهز، 1 = طُلب الإذن (تصل النتيجة إلى onBlePerm)، 2 = البلوتوث مغلق أو غير مدعوم. */
+        @JavascriptInterface
+        public int bleReady(final boolean scan) {
+            final String[] need = blePerms(scan);
+            if (!hasAll(need)) {
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        requestPermissions(need, REQ_BLE);
+                    }
+                });
+                return 1;
+            }
+            return ble.enabled() ? 0 : 2;
+        }
+
+        @JavascriptInterface
+        public void bleScan(final int seconds) {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    ble.scan(seconds, new BlePrinter.ScanListener() {
+                        @Override
+                        public void found(String name, String mac, int rssi) {
+                            js("window.onBleDevice && onBleDevice(" + JSONObject.quote(name) + "," + JSONObject.quote(mac) + "," + rssi + ")");
+                        }
+
+                        @Override
+                        public void end() {
+                            js("window.onBleScanEnd && onBleScanEnd()");
+                        }
+                    });
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void blePrint(final String mac, String b64) {
+            final byte[] bytes;
+            try {
+                bytes = Base64.decode(b64, Base64.DEFAULT);
+            } catch (Exception e) {
+                js("window.onBlePrint && onBlePrint(false," + JSONObject.quote("بيانات الطباعة غير صالحة.") + ")");
+                return;
+            }
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    ble.print(mac, bytes, new BlePrinter.Listener() {
+                        @Override
+                        public void status(String text) {
+                            js("window.onBleStatus && onBleStatus(" + JSONObject.quote(text) + ")");
+                        }
+
+                        @Override
+                        public void done(boolean ok, String text) {
+                            js("window.onBlePrint && onBlePrint(" + ok + "," + JSONObject.quote(text) + ")");
+                        }
+                    });
+                }
             });
         }
 

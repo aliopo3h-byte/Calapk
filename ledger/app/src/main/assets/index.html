@@ -288,7 +288,7 @@ var db = null, idx = null, ver = 0, accCache = {};
 
 function blank() {
   return { v: 1, seq: { rec: 0, id: 0 }, customers: {}, charges: [], pays: [], subs: [],
-    cfg: { shop: '', shopph: '', curr: '', foot: 'شكراً لتعاملكم معنا', pw: 384, cc: '', tpl: DEF_TPL, theme: 'auto', pre: '' },
+    cfg: { shop: '', shopph: '', curr: '', foot: 'شكراً لتعاملكم معنا', pw: 384, cc: '', tpl: DEF_TPL, theme: 'auto', pre: '', dens: 'normal', printer: null },
     meta: { saved: 0, lastBackup: 0 } };
 }
 function fixDb(d) {
@@ -470,8 +470,8 @@ function wrapLines(x, text, maxW) {
   return lines;
 }
 // a tiny page builder: the paper is as wide as the printer's dots, the result is pure black and white
-function Doc() {
-  this.W = +db.cfg.pw || 384; this.P = Math.round(this.W * 0.05); this.CW = this.W - this.P * 2;
+function Doc(width) {
+  this.W = width || +db.cfg.pw || 384; this.P = Math.round(this.W * 0.05); this.CW = this.W - this.P * 2;
   this.cv = document.createElement('canvas'); this.cv.width = this.W; this.cv.height = 4200;
   this.x = this.cv.getContext('2d'); this.x.fillStyle = '#fff'; this.x.fillRect(0, 0, this.W, 4200);
   this.x.fillStyle = '#000'; this.x.strokeStyle = '#000'; this.y = this.P;
@@ -518,7 +518,8 @@ Doc.prototype.footer = function () {
   if (foot) { this.gap(8); this.text(foot, 20, false, 'center'); }
   this.gap(36);
 };
-Doc.prototype.blob = function () {
+// pure black and white copy of the page, cropped to what was drawn
+Doc.prototype.finish = function () {
   var W = this.W, H = Math.min(this.y, this.cv.height), out = document.createElement('canvas');
   out.width = W; out.height = H;
   var oc = out.getContext('2d'); oc.drawImage(this.cv, 0, 0);
@@ -528,11 +529,15 @@ Doc.prototype.blob = function () {
     d[q] = d[q + 1] = d[q + 2] = v; d[q + 3] = 255;
   }
   oc.putImageData(id, 0, 0);
+  return out;
+};
+Doc.prototype.blob = function () {
+  var out = this.finish();
   return new Promise(function (res, rej) { out.toBlob(function (b) { b ? res(b) : rej(new Error('blob')); }, 'image/png'); });
 };
 function curTxt() { return db.cfg.curr ? ' ' + db.cfg.curr : ''; }
-function renderReceipt(p) {
-  var c = db.customers[p.cid] || { name: '—', phone: '' }, d = new Doc();
+function receiptDoc(p, width) {
+  var c = db.customers[p.cid] || { name: '—', phone: '' }, d = new Doc(width);
   d.header('سند قبض');
   d.text('رقم السند: ' + recNo(p), 24, true);
   d.text('التاريخ: ' + p.d + '   ' + hm(p.ts), 22, false);
@@ -548,8 +553,9 @@ function renderReceipt(p) {
   d.rule(true);
   d.text('المستلم: ____________________', 22, false);
   d.footer();
-  return d.blob();
+  return d;
 }
+function renderReceipt(p) { return receiptDoc(p).blob(); }
 function movements(cid) {
   var ix = ensure(), rows = [];
   (ix.ch[cid] || []).forEach(function (c) { rows.push({ d: c.date, t: c.desc || 'مستحق', a: c.amt, id: c.id }); });
@@ -557,8 +563,8 @@ function movements(cid) {
   rows.sort(function (a, b) { return a.d < b.d ? -1 : a.d > b.d ? 1 : a.id - b.id; });
   return rows;
 }
-function renderStatement(c) {
-  var a = acct(c.id), d = new Doc(), mv = movements(c.id).slice(-22);
+function statementDoc(c, width) {
+  var a = acct(c.id), d = new Doc(width), mv = movements(c.id).slice(-22);
   d.header('كشف حساب');
   d.text(c.name, 28, true);
   if (c.phone) d.text('الهاتف: ' + c.phone, 22, false);
@@ -574,8 +580,9 @@ function renderStatement(c) {
     mv.forEach(function (m) { d.row(m.d.slice(2) + ' ' + m.t, (m.a < 0 ? '-' : '+') + money(Math.abs(m.a)), 20, false); });
   } else d.text('لا توجد حركات.', 20, false);
   d.footer();
-  return d.blob();
+  return d;
 }
+function renderStatement(c) { return statementDoc(c).blob(); }
 function receiptText(p) {
   var c = db.customers[p.cid] || { name: '—' };
   var L = [(db.cfg.shop || '') , 'سند قبض رقم ' + recNo(p), 'التاريخ: ' + p.d + ' ' + hm(p.ts), 'استلمنا من: ' + c.name, 'المبلغ: ' + money(p.amt) + curTxt(), 'طريقة الدفع: ' + methodName(p.m)];
@@ -592,6 +599,105 @@ function statementText(c) {
   if (mv.length) { L.push('', 'آخر الحركات:'); mv.forEach(function (m) { L.push(m.d + ' | ' + m.t + ' | ' + (m.a < 0 ? '-' : '+') + money(Math.abs(m.a))); }); }
   if (db.cfg.shop) L.push('', db.cfg.shop);
   return L.join('\n');
+}
+
+/* ================= direct printing: the "cat printer" Bluetooth protocol (MX10 and relatives) =================
+   Frame: 51 78 | command | 00 | length (2 bytes, little endian) | payload | CRC-8 (poly 0x07) of the payload | FF
+   Rows: command A2, 48 bytes (384 dots), bit 0 = leftmost dot, 1 = black. */
+var CAT_W = 384, CAT_BYTES = 48;
+var CAT_ENERGY = { light: 0x3000, normal: 0x4800, dark: 0x6000 };
+function crc8(bytes) {
+  var c = 0;
+  for (var i = 0; i < bytes.length; i++) { c ^= bytes[i]; for (var k = 0; k < 8; k++) c = (c & 0x80) ? (((c << 1) ^ 0x07) & 0xFF) : ((c << 1) & 0xFF); }
+  return c;
+}
+function catFrame(cmd, payload) {
+  var n = payload.length, f = new Uint8Array(n + 8);
+  f[0] = 0x51; f[1] = 0x78; f[2] = cmd; f[3] = 0; f[4] = n & 255; f[5] = n >> 8;
+  f.set(payload, 6); f[6 + n] = crc8(payload); f[7 + n] = 0xFF;
+  return f;
+}
+function catRows(canvas) {
+  var W = canvas.width, H = canvas.height;
+  if (W !== CAT_W) throw new Error('width');
+  var d = canvas.getContext('2d').getImageData(0, 0, W, H).data, rows = [];
+  for (var y = 0; y < H; y++) {
+    var r = new Uint8Array(CAT_BYTES);
+    for (var x = 0; x < W; x++) if (d[(y * W + x) * 4] < 128) r[x >> 3] |= 1 << (x & 7);
+    rows.push(r);
+  }
+  return rows;
+}
+// the whole job as one byte stream (the MX10 family feeds paper by sending blank rows)
+function catStream(rows, density) {
+  var parts = [], en = CAT_ENERGY[density] || CAT_ENERGY.normal, i, total = 0;
+  var P = function (cmd, payload) { parts.push(catFrame(cmd, payload)); };
+  P(0xA3, [0]); P(0xA3, [0]);                       // device state, then start printing
+  P(0xA4, [0x32]);                                   // 200 dpi
+  P(0xBD, [32]);                                     // speed
+  P(0xAF, [en & 255, en >> 8]);                      // energy
+  P(0xBE, [1]);                                      // apply energy
+  P(0xA9, [0]);                                      // update device
+  P(0xA6, [0xAA, 0x55, 0x17, 0x38, 0x44, 0x5F, 0x5F, 0x5F, 0x44, 0x38, 0x2C]);   // lattice start
+  rows.forEach(function (r) { P(0xA2, r); });
+  P(0xA6, [0xAA, 0x55, 0x17, 0, 0, 0, 0, 0, 0, 0, 0x17]);                         // lattice end
+  P(0xBD, [8]);
+  var blank = new Uint8Array(CAT_BYTES); for (i = 0; i < 128; i++) P(0xA2, blank);
+  P(0xA3, [0]);
+  parts.forEach(function (x) { total += x.length; });
+  var out = new Uint8Array(total), off = 0;
+  parts.forEach(function (x) { out.set(x, off); off += x.length; });
+  return out;
+}
+function bytesB64(u8) {
+  var s = '', n = 0x8000;
+  for (var i = 0; i < u8.length; i += n) s += String.fromCharCode.apply(null, u8.subarray(i, i + n));
+  return btoa(s);
+}
+var NATIVE_BLE = NATIVE && typeof window.Android.blePrint === 'function';
+function printerOn() { return NATIVE_BLE && db.cfg.printer && db.cfg.printer.mac; }
+function bleEnsure(scan) {
+  return new Promise(function (res) {
+    var st = 2; try { st = window.Android.bleReady(!!scan); } catch (e) { st = 2; }
+    if (st === 0) { res(true); return; }
+    if (st === 1) { window.onBlePerm = function (g) { if (!g) toast('الطباعة بالبلوتوث تحتاج السماح بإذن «الأجهزة القريبة».', 5000); res(!!g); }; return; }
+    toast('البلوتوث غير مفعّل أو غير مدعوم في هذا الهاتف.', 4500); res(false);
+  });
+}
+var printing = false;
+// draws the document at the printer's width and sends it; resolves with true when it printed
+async function printDoc(makeDoc) {
+  if (printing) { toast('الطباعة جارية، انتظر قليلاً.'); return false; }
+  if (!printerOn()) { toast('اختر الطابعة أولاً من الإعدادات.'); return false; }
+  if (!(await bleEnsure(false))) return false;
+  printing = true;
+  try {
+    var doc = makeDoc(CAT_W), bytes = catStream(catRows(doc.finish()), db.cfg.dens);
+    return await new Promise(function (res) {
+      window.onBleStatus = function (m) { toast(m, 2500); };
+      window.onBlePrint = function (ok, msg) { printing = false; toast(msg, ok ? 2500 : 6000); res(!!ok); };
+      try { window.Android.blePrint(db.cfg.printer.mac, bytesB64(bytes)); }
+      catch (e) { printing = false; toast('تعذّر بدء الطباعة.'); res(false); }
+    });
+  } catch (e) { printing = false; toast('تعذّر تجهيز الوصل للطباعة.'); return false; }
+}
+function testDoc(width) {
+  var d = new Doc(width);
+  d.header('طباعة تجريبية');
+  d.text('إذا قرأت هذا فالطابعة تعمل.', 24, true, 'center');
+  d.text(today() + '   ' + hm(Date.now()), 20, false, 'center');
+  d.rule(true);
+  d.row('كثافة الطباعة', ({ light: 'خفيفة', normal: 'عادية', dark: 'غامقة' })[db.cfg.dens] || 'عادية', 22, false);
+  d.row('عرض الورق', String(CAT_W) + ' نقطة', 22, false);
+  d.rule(false); d.gap(4);
+  for (var i = 0; i < 4; i++) { d.x.fillRect(d.P + i * 40, d.y, 20 + i * 6, 14); d.y += 18; }
+  d.footer();
+  return d;
+}
+function scanPrinters(onFound, onEnd) {
+  window.onBleDevice = function (name, mac, rssi) { onFound(name || '', mac, rssi); };
+  window.onBleScanEnd = function () { onEnd(); };
+  try { window.Android.bleScan(8); } catch (e) { onEnd(); }
 }
 
 /* ================= sharing ================= */
@@ -775,9 +881,18 @@ function receiptViewer(p, isNew) {
   openSheet(function (sh, close) {
     var paper = h('div', { class: 'paper' }, h('p', { class: 'muted small', text: 'جارٍ تجهيز الوصل…' })), blob = null, url = null;
     sh.appendChild(h('h2', { text: (isNew ? 'تم إصدار السند ' : 'سند رقم ') + recNo(p) }));
-    var print = h('button', { class: 'btn block', type: 'button', text: 'طباعة / مشاركة الوصل' });
-    print.addEventListener('click', function () { if (blob) shareBlob(blob, 'receipt-' + recNo(p) + '.png', 'image/png'); });
-    sh.appendChild(print); sh.appendChild(paper);
+    var direct = printerOn(), label = direct ? '🖨 طباعة مباشرة على ' + (db.cfg.printer.name || 'الطابعة') : 'طباعة / مشاركة الوصل';
+    var print = h('button', { class: 'btn block', type: 'button', text: label });
+    function shareIt() { if (blob) shareBlob(blob, 'receipt-' + recNo(p) + '.png', 'image/png'); }
+    function doPrint() {
+      if (!direct) { shareIt(); return; }
+      print.disabled = true; print.textContent = 'جارٍ الطباعة…';
+      printDoc(function (w) { return receiptDoc(p, w); }).then(function () { print.disabled = false; print.textContent = label; });
+    }
+    print.addEventListener('click', doPrint);
+    sh.appendChild(print);
+    if (direct) sh.appendChild(h('button', { class: 'btn soft block', type: 'button', text: 'مشاركة الصورة إلى تطبيق آخر', onclick: shareIt }));
+    sh.appendChild(paper);
     var cu = db.customers[p.cid], link = cu ? waLink(cu.phone, receiptText(p)) : '';
     var row = h('div', { class: 'btns' }, h('button', { class: 'btn soft sm', type: 'button', text: 'مشاركة كنص', onclick: function () { shareText(receiptText(p)); } }),
       link ? h('a', { class: 'btn soft sm', href: link, text: 'إرسال واتساب' }) : null);
@@ -786,7 +901,7 @@ function receiptViewer(p, isNew) {
     sh.appendChild(armed(vb, 'اضغط مرة أخرى للتأكيد', function () { p.void = p.void ? 0 : 1; dirty(); close(); toast(p.void ? 'تم إلغاء السند.' : 'تم استرجاع السند.'); render(); }));
     renderReceipt(p).then(function (b) {
       blob = b; url = URL.createObjectURL(b); paper.innerHTML = ''; paper.appendChild(h('img', { src: url, alt: 'معاينة السند' }));
-      if (isNew && NATIVE) shareBlob(b, 'receipt-' + recNo(p) + '.png', 'image/png');
+      if (isNew) { if (direct) doPrint(); else if (NATIVE) shareIt(); }
     }).catch(function () { paper.textContent = 'تعذّر إنشاء صورة الوصل.'; });
   }, { onclose: function () { /* object URLs are released with the page */ } });
 }
@@ -794,7 +909,10 @@ function statementViewer(cu) {
   openSheet(function (sh) {
     var paper = h('div', { class: 'paper' }, h('p', { class: 'muted small', text: 'جارٍ التجهيز…' })), blob = null;
     sh.appendChild(h('h2', { text: 'كشف حساب ' + cu.name }));
-    sh.appendChild(h('button', { class: 'btn block', type: 'button', text: 'مشاركة الكشف كصورة', onclick: function () { if (blob) shareBlob(blob, 'statement-' + today() + '.png', 'image/png'); } }));
+    if (printerOn()) sh.appendChild(h('button', { class: 'btn block', type: 'button', text: '🖨 طباعة مباشرة', onclick: function (e) {
+      var bt = e.currentTarget; bt.disabled = true; printDoc(function (w) { return statementDoc(cu, w); }).then(function () { bt.disabled = false; });
+    } }));
+    sh.appendChild(h('button', { class: printerOn() ? 'btn soft block' : 'btn block', type: 'button', text: 'مشاركة الكشف كصورة', onclick: function () { if (blob) shareBlob(blob, 'statement-' + today() + '.png', 'image/png'); } }));
     sh.appendChild(paper);
     var link = waLink(cu.phone, statementText(cu));
     sh.appendChild(h('div', { class: 'btns' }, h('button', { class: 'btn soft sm', type: 'button', text: 'مشاركة كنص', onclick: function () { shareText(statementText(cu)); } }), link ? h('a', { class: 'btn soft sm', href: link, text: 'إرسال واتساب' }) : null));
@@ -1167,6 +1285,30 @@ function viewReports() {
   return root;
 }
 
+function pickPrinter() {
+  bleEnsure(true).then(function (ok) {
+    if (!ok) return;
+    openSheet(function (sh, close) {
+      var list = h('div', { class: 'list' }), info = h('p', { class: 'muted small', text: 'جارٍ البحث عن الطابعات القريبة…' }), seen = {}, found = [];
+      sh.appendChild(h('h2', { text: 'اختر الطابعة' })); sh.appendChild(info); sh.appendChild(list);
+      var likely = function (n) { return /^(MX|GB|GT|YT|PD|SC|Mini|Cat)/i.test(n || '') ? 0 : 1; };
+      function paint() {
+        list.innerHTML = '';
+        found.sort(function (a, b) { return likely(a.name) - likely(b.name) || b.rssi - a.rssi; }).forEach(function (d) {
+          list.appendChild(h('div', { class: 'item', role: 'button', tabindex: '0', onclick: function () { db.cfg.printer = { mac: d.mac, name: d.name }; dirty(); close(); toast('تم اختيار الطابعة.'); render(); } },
+            ic('receipt'), h('div', { class: 't' }, h('b', { text: d.name || 'جهاز بلا اسم' }), h('small', { class: 'num', text: d.mac })), h('div', { class: 'a muted small num', text: d.rssi + ' dBm' })));
+        });
+      }
+      scanPrinters(function (name, mac, rssi) {
+        if (!seen[mac]) { seen[mac] = { name: name, mac: mac, rssi: rssi }; found.push(seen[mac]); } else { seen[mac].rssi = rssi; if (name) seen[mac].name = name; }
+        paint();
+      }, function () {
+        info.textContent = found.length ? 'اضغط على طابعتك (اسمها يبدأ غالباً بـ MX أو GB).' : 'لم أجد أجهزة. شغّل الطابعة وقرّبها، وتأكد أن تطبيقها الأصلي مغلق.';
+      });
+    });
+  });
+}
+
 /* ---- settings ---- */
 function applyTheme() {
   var t = db.cfg.theme || 'auto';
@@ -1192,6 +1334,16 @@ function viewSettings() {
     h('label', { class: 'fld' }, h('span', { text: 'نص التذكير' }), tpl, h('small', { class: 'muted', text: 'المتغيرات: {الاسم} {المبلغ} {العملة} {التاريخ} {المحل}' }))));
   root.appendChild(h('div', { class: 'card list' }, h('h2', { text: 'المظهر' }),
     seg([['auto', 'تلقائي'], ['light', 'فاتح'], ['dark', 'داكن']], db.cfg.theme || 'auto', function (v) { db.cfg.theme = v; dirty(); applyTheme(); })));
+  if (NATIVE_BLE) {
+    var pr = db.cfg.printer;
+    root.appendChild(h('div', { class: 'card list' }, h('h2', { text: 'الطابعة (بلوتوث)' }),
+      h('p', { class: 'muted small', text: pr && pr.mac ? 'الطابعة المختارة: ' + (pr.name || '—') + ' (' + pr.mac + ')' : 'لم تُختر طابعة بعد. أغلق تطبيق الطابعة الأصلي أولاً، ثم اختر طابعتك.' }),
+      h('div', { class: 'btns' }, h('button', { class: 'btn', type: 'button', text: 'اختيار الطابعة', onclick: pickPrinter }),
+        pr && pr.mac ? h('button', { class: 'btn soft', type: 'button', text: 'طباعة تجريبية', onclick: function () { printDoc(testDoc); } }) : null),
+      h('div', { class: 'fld' }, h('span', { text: 'كثافة الطباعة' }), seg([['light', 'خفيفة'], ['normal', 'عادية'], ['dark', 'غامقة']], db.cfg.dens || 'normal', function (v) { db.cfg.dens = v; dirty(); })),
+      h('p', { class: 'muted small', text: 'تتصل الطابعة بتطبيق واحد في الوقت نفسه: أغلق تطبيقها الأصلي قبل الطباعة من هنا.' }),
+      pr && pr.mac ? armed(h('button', { class: 'btn ghost sm', type: 'button', text: 'إزالة الطابعة' }), 'اضغط مرة أخرى للتأكيد', function () { db.cfg.printer = null; dirty(); render(); }) : null));
+  }
   var bk = db.meta.lastBackup ? 'آخر نسخة: ' + new Date(db.meta.lastBackup).toLocaleDateString('ar-u-nu-latn') : 'لم تؤخذ نسخة بعد';
   root.appendChild(h('div', { class: 'card list' }, h('h2', { text: 'البيانات' }), h('p', { class: 'muted small', text: bk + '. بياناتك على هذا الهاتف فقط ولا تُرسل لأي جهة. خذ نسخة احتياطية بانتظام.' }),
     h('div', { class: 'btns' },
@@ -1243,7 +1395,8 @@ load().then(function () {
   lastDay = today(); genSubs(); applyTheme(); buildNav(); render();
   setInterval(tick, 600000);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) tick(); });
-  window.__ledger = { get db() { return db; }, acct: acct, render: render, go: go, addPayment: addPayment, genSubs: genSubs, flush: flush };
+  window.__ledger = { get db() { return db; }, acct: acct, render: render, go: go, addPayment: addPayment, genSubs: genSubs, flush: flush,
+    cat: { crc8: crc8, frame: catFrame, rows: catRows, stream: catStream, receiptDoc: receiptDoc, statementDoc: statementDoc, testDoc: testDoc } };
 });
 })();
 </script>
